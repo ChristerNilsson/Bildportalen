@@ -32,11 +32,13 @@ PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
 OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+OUTPUT_SCHEMA_VERSION = 2
 IMAGE_MIME_PREFIX = "image/"
 PDF_MIME_TYPE = "application/pdf"
 LINK_FILE_EXTENSIONS = (".pdf", ".txt")
 SUPPORTED_FILE_EXTENSIONS = (*LINK_FILE_EXTENSIONS, ".url")
 TOP_LEVEL_CATALOGS = {"0000 Klubbar", "0000 Evenemang", "0000 Diverse"}
+TOP_LEVEL_CATALOGS_NORMALIZED = {catalog.casefold(): catalog for catalog in TOP_LEVEL_CATALOGS}
 GOOGLE_DRIVE_FOLDER = "application/vnd.google-apps.folder"
 USER_AGENT = "Mozilla/5.0 BildbankenForAll/1.0"
 GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
@@ -102,6 +104,9 @@ def main() -> None:
 
         if OAUTH_TOKEN and old_photographer_photos and changes_state:
             changed = photographer_has_drive_changes(changes_state)
+            if not changed and contains_okand(old_photographer_photos):
+                changed = True
+                log_detail(f"Omgenererar {photographer_file.name} eftersom den innehåller okand.")
             if not changed:
                 log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
                 ensure_json_file(photographer_file, old_photographer_photos)
@@ -229,6 +234,9 @@ def drive_id_from_url(url: str) -> str | None:
 
 
 def photographer_has_drive_changes(changes_state: dict[str, Any]) -> bool:
+    if changes_state.get("schemaVersion") != OUTPUT_SCHEMA_VERSION:
+        return True
+
     page_token = changes_state.get("pageToken", "")
     if not page_token:
         return True
@@ -283,6 +291,7 @@ def build_changes_state(folder_id: str, entries: list[dict[str, Any]]) -> dict[s
     tracked_ids.discard("")
 
     return {
+        "schemaVersion": OUTPUT_SCHEMA_VERSION,
         "pageToken": get_drive_start_page_token(),
         "trackedIds": sorted(tracked_ids),
     }
@@ -303,12 +312,16 @@ def add_drive_folder(
     path: list[str],
     drive_entries: list[dict[str, Any]],
     visited: set[str] | None = None,
+    root_folder_name: str | None = None,
 ) -> int:
     if visited is None:
         visited = set()
     if folder_id in visited:
         return 0
     visited.add(folder_id)
+
+    if root_folder_name is None and not path:
+        root_folder_name = get_drive_folder_name(folder_id)
 
     try:
         items = list_drive_folder(folder_id)
@@ -329,9 +342,23 @@ def add_drive_folder(
             }
         )
         if item.is_folder:
-            changed += add_drive_folder(photos, photographer_key, item.id, [*path, item.name], drive_entries, visited)
+            changed += add_drive_folder(
+                photos,
+                photographer_key,
+                item.id,
+                [*path, item.name],
+                drive_entries,
+                visited,
+                root_folder_name,
+            )
         elif item.is_image:
-            insert_file(photos, path, item.name, [item.id, photographer_key, item.taken_time])
+            insert_file(
+                photos,
+                path,
+                item.name,
+                [item.id, photographer_key, item.taken_time],
+                root_folder_name=root_folder_name,
+            )
             changed += 1
         elif item.is_url_file:
             try:
@@ -340,10 +367,24 @@ def add_drive_folder(
                 log_detail(f"Hoppar över {item.name}: {error}")
                 continue
             link_name = re.sub(r"\.url$", "", item.name, flags=re.IGNORECASE)
-            insert_file(photos, path, link_name, target_url, preserve_top_level=True)
+            insert_file(
+                photos,
+                path,
+                link_name,
+                target_url,
+                preserve_top_level=True,
+                root_folder_name=root_folder_name,
+            )
             changed += 1
         elif item.is_link_file:
-            insert_file(photos, path, item.name, item.id, preserve_top_level=True)
+            insert_file(
+                photos,
+                path,
+                item.name,
+                item.id,
+                preserve_top_level=True,
+                root_folder_name=root_folder_name,
+            )
             changed += 1
     return changed
 
@@ -407,6 +448,34 @@ def list_drive_folder_api(folder_id: str) -> list[DriveItem]:
         page_token = data.get("nextPageToken", "")
         if not page_token:
             return items
+
+
+def get_drive_folder_name(folder_id: str) -> str:
+    if OAUTH_TOKEN or GOOGLE_DRIVE_API_KEY:
+        query = {
+            "fields": "name",
+            "supportsAllDrives": "true",
+        }
+        if not OAUTH_TOKEN:
+            query["key"] = GOOGLE_DRIVE_API_KEY
+        data = fetch_drive_json(
+            f"https://www.googleapis.com/drive/v3/files/{folder_id}?" + urlencode(query)
+        )
+        name = data.get("name", "")
+        if name:
+            return repair_text(name)
+
+    try:
+        body = fetch_text(f"https://drive.google.com/drive/folders/{folder_id}")
+    except RuntimeError:
+        return ""
+    match = re.search(r"<title>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+    if match:
+        title = clean_html(match.group(1))
+        title = re.sub(r"\s*-\s*Google Drive\s*$", "", title, flags=re.IGNORECASE).strip()
+        if title:
+            return title
+    return ""
 
 
 def fetch_json(url: str) -> dict[str, Any]:
@@ -637,16 +706,25 @@ def insert_file(
     filename: str,
     value: Any,
     preserve_top_level: bool = False,
+    root_folder_name: str | None = None,
 ) -> None:
     if preserve_top_level and not path:
         photos[filename] = value
         return
 
-    year, parts = tree_parts([*path, filename])
+    year, parts = tree_parts([*path, filename], root_folder_name)
     node = photos.setdefault(year, {})
     for part in parts[:-1]:
         node = node.setdefault(part, {})
     node[parts[-1]] = value
+
+
+def contains_okand(node: Any) -> bool:
+    if isinstance(node, dict):
+        if "okand" in node:
+            return True
+        return any(contains_okand(child) for child in node.values())
+    return False
 
 
 def merge_tree(target: dict[str, Any], source: dict[str, Any]) -> None:
@@ -658,11 +736,33 @@ def merge_tree(target: dict[str, Any], source: dict[str, Any]) -> None:
             target[key] = value
 
 
-def tree_parts(parts: list[str]) -> tuple[str, list[str]]:
-    if parts and parts[0] in TOP_LEVEL_CATALOGS:
-        return parts[0], parts[1:]
+def tree_parts(parts: list[str], root_folder_name: str | None = None) -> tuple[str, list[str]]:
+    if parts:
+        first = parts[0].strip()
+        normalized_first = first.casefold()
+        if normalized_first in TOP_LEVEL_CATALOGS_NORMALIZED:
+            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized_first], parts[1:]
 
-    year = next((part for part in parts if re.fullmatch(r"\d{4}", part)), None)
+    for index, part in enumerate(parts):
+        normalized = part.strip().casefold()
+        if normalized in TOP_LEVEL_CATALOGS_NORMALIZED:
+            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized], parts[index + 1:]
+
+    if root_folder_name is not None:
+        normalized_root = root_folder_name.strip().casefold()
+        if normalized_root in TOP_LEVEL_CATALOGS_NORMALIZED:
+            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized_root], parts
+
+    year = next((part for part in parts if re.fullmatch(r"(?!0000)\d{4}", part)), None)
+    if year is None:
+        year = next(
+            (
+                match.group("year")
+                for part in parts
+                if (match := re.match(r"^(?!0000)(?P<year>\d{4})(?:\D|$)", part))
+            ),
+            None,
+        )
     if year is None:
         dated = next((part[:4] for part in parts if re.match(r"\d{4}-\d{2}-\d{2}", part)), None)
         year = dated or "okand"
