@@ -1,0 +1,1255 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bildportalen</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f5f5f2;
+      color: #1e2528;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+    }
+
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid #d9ddd8;
+      padding: 24px clamp(16px, 4vw, 48px);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .tools {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      max-width: 860px;
+    }
+
+    input {
+      border: 1px solid #b7c0bd;
+      border-radius: 6px;
+      flex: 1;
+      font: inherit;
+      min-width: 0;
+      padding: 11px 12px;
+    }
+
+    .current-catalog {
+      align-items: baseline;
+      color: #536160;
+      display: flex;
+      font-size: 1rem;
+      font-weight: 700;
+      gap: 8px;
+      justify-content: flex-start;
+      margin: 0 0 12px;
+      max-width: 860px;
+    }
+
+    .current-catalog-count {
+      font-size: 0.95rem;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .catalogs {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      width: 100%;
+    }
+
+    .catalog-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    .catalog-links a {
+      color: #1e2528;
+      font-size: 0.95rem;
+    }
+
+    .catalog-button {
+      background: #eef1ed;
+      border: 1px solid #c8d0cc;
+      border-radius: 6px;
+      color: #1e2528;
+      cursor: pointer;
+      font: inherit;
+      padding: 8px 10px;
+    }
+
+    .catalog-button:hover {
+      background: #e4e9e4;
+    }
+
+    .catalog-button.up {
+      background: #1e2528;
+      border-color: #1e2528;
+      color: #ffffff;
+    }
+
+    main {
+      padding: 24px clamp(16px, 4vw, 48px) 48px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    }
+
+    figure {
+      background: #ffffff;
+      border: 1px solid #d9ddd8;
+      border-radius: 8px;
+      cursor: zoom-in;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    img {
+      aspect-ratio: 4 / 3;
+      background: #e2e5e1;
+      display: block;
+      height: auto;
+      object-fit: cover;
+      width: 100%;
+    }
+
+    figcaption {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+    }
+
+    .name {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      color: #536160;
+      font-size: 0.9rem;
+      overflow-wrap: anywhere;
+    }
+
+    .meta a {
+      color: inherit;
+    }
+
+    .empty {
+      color: #536160;
+      font-size: 1.1rem;
+      margin: 32px 0;
+    }
+
+    .load-more {
+      height: 1px;
+    }
+
+    dialog {
+      background: #111;
+      border: 0;
+      color: #fff;
+      height: 100%;
+      max-height: none;
+      max-width: none;
+      padding: 0;
+      width: 100%;
+    }
+
+    dialog::backdrop {
+      background: #111;
+    }
+
+    .viewer {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100%;
+    }
+
+    .viewer-bar {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      padding: 12px clamp(12px, 3vw, 28px);
+    }
+
+    .viewer-title {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    button {
+      background: #fff;
+      border: 0;
+      border-radius: 6px;
+      color: #111;
+      cursor: pointer;
+      font: inherit;
+      padding: 9px 12px;
+    }
+
+    .viewer-stage {
+      cursor: grab;
+      overflow: hidden;
+      position: relative;
+      touch-action: none;
+    }
+
+    .viewer-stage.dragging {
+      cursor: grabbing;
+    }
+
+    .viewer-image {
+      background: #111;
+      left: 0;
+      position: absolute;
+      top: 0;
+      transform-origin: 0 0;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .viewer-meta {
+      color: #d7d7d7;
+      overflow-wrap: anywhere;
+      padding: 12px clamp(12px, 3vw, 28px);
+    }
+
+    .viewer-meta a {
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="tools">
+      <input id="search" type="search" placeholder="Sök på katalog eller filnamn" autocomplete="off">
+    </div>
+    <div class="current-catalog">
+      <span id="current-catalog">Bildportalen</span>
+      <span class="current-catalog-count" id="current-catalog-count"></span>
+    </div>
+    <div class="catalog-links" id="catalog-links"></div>
+    <div class="catalogs" id="catalogs"></div>
+  </header>
+  <main>
+    <div class="grid" id="grid"></div>
+    <div class="load-more" id="load-more"></div>
+    <p class="empty" id="empty" hidden>Inga bilder matchar sökningen.</p>
+  </main>
+  <dialog id="viewer">
+    <div class="viewer">
+      <div class="viewer-bar">
+        <div class="viewer-title" id="viewer-title"></div>
+        <button id="viewer-close" type="button">Stäng</button>
+      </div>
+      <div class="viewer-stage" id="viewer-stage">
+        <img class="viewer-image" id="viewer-image" alt="">
+      </div>
+      <div class="viewer-meta" id="viewer-meta"></div>
+    </div>
+  </dialog>
+
+  <script>
+    const state = {
+      tree: {},
+      photos: [],
+      visiblePhotos: [],
+      renderedCount: 0,
+      thumbnailQueue: [],
+      thumbnailActive: 0,
+      photographers: {},
+      currentPath: [],
+      viewer: {
+        photo: null,
+        scale: 1,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        pointerId: null,
+        dragStartX: 0,
+        dragStartY: 0,
+        startX: 0,
+        startY: 0
+      }
+    };
+
+    const grid = document.querySelector("#grid");
+    const loadMore = document.querySelector("#load-more");
+    const catalogs = document.querySelector("#catalogs");
+    const catalogLinks = document.querySelector("#catalog-links");
+    const currentCatalog = document.querySelector("#current-catalog");
+    const currentCatalogCount = document.querySelector("#current-catalog-count");
+    const search = document.querySelector("#search");
+    const empty = document.querySelector("#empty");
+    const viewer = document.querySelector("#viewer");
+    const viewerStage = document.querySelector("#viewer-stage");
+    const viewerImage = document.querySelector("#viewer-image");
+    const viewerTitle = document.querySelector("#viewer-title");
+    const viewerMeta = document.querySelector("#viewer-meta");
+    const viewerClose = document.querySelector("#viewer-close");
+    const lazyImageObserver = createLazyImageObserver();
+    const thumbnailTimers = new WeakMap();
+
+    init();
+
+    async function init() {
+      const [photographers, tree] = await Promise.all([
+        fetchJson("photographers.json", {}),
+        fetchJson("photos.json", {})
+      ]);
+      state.photographers = photographers;
+      state.tree = tree;
+      state.photos = flattenPhotos(tree).sort(compareFreshness);
+      state.currentPath = folderPathFromUrl(tree);
+      search.value = queryFromUrl();
+      search.addEventListener("input", () => {
+        updateUrl(search.value);
+        render();
+      });
+      viewerClose.addEventListener("click", closeViewer);
+      viewer.addEventListener("click", (event) => {
+        if (event.target === viewer) closeViewer();
+      });
+      viewerImage.addEventListener("load", resetViewerTransform);
+      viewerStage.addEventListener("wheel", zoomViewer, { passive: false });
+      viewerStage.addEventListener("pointerdown", startViewerDrag);
+      viewerStage.addEventListener("pointermove", dragViewer);
+      viewerStage.addEventListener("pointerup", stopViewerDrag);
+      viewerStage.addEventListener("pointercancel", stopViewerDrag);
+      initInfiniteScroll();
+      window.addEventListener("scroll", handleScroll, { passive: true });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && viewer.open) closeViewer();
+      });
+      window.addEventListener("resize", () => {
+        if (viewer.open) resetViewerTransform();
+        handleScroll();
+      });
+      render();
+    }
+
+    async function fetchJson(url, fallback) {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error(response.statusText);
+        return await response.json();
+      } catch (error) {
+        console.warn(`Kunde inte läsa ${url}`, error);
+        return fallback;
+      }
+    }
+
+    function flattenPhotos(tree) {
+      const photos = [];
+      walk(tree, []);
+      return photos;
+
+      function walk(node, path) {
+        for (const [name, value] of Object.entries(node || {})) {
+          if (Array.isArray(value)) {
+            const [key, photographerKey, timestamp] = photoValue(value);
+            const folders = path.slice(1);
+            const displayFolders = folders.map(displayName);
+            const displayPhotoName = displayName(name);
+            photos.push({
+              name,
+              displayName: displayPhotoName,
+              key,
+              photographerKey,
+              catalogPath: path,
+              folders,
+              displayFolders,
+              date: findDate([...path, name]),
+              timestamp,
+              haystack: [...folders, name, ...displayFolders, displayPhotoName].join(" ").toLowerCase()
+            });
+          } else if (value && typeof value === "object") {
+            walk(value, [...path, name]);
+          }
+        }
+      }
+    }
+
+    function findDate(parts) {
+      for (const part of parts) {
+        const match = String(part).match(/\d{4}-\d{2}-\d{2}/);
+        if (match) return match[0];
+      }
+      const year = parts.find((part) => /^\d{4}$/.test(String(part)));
+      return year ? `${year}-00-00` : "0000-00-00";
+    }
+
+    function render() {
+      const query = normalize(search.value);
+      const terms = query.split(/\s+/).filter(Boolean);
+      const photos = photosInCurrentCatalog(state.photos);
+      const matches = rankMatches(photos, terms);
+      state.visiblePhotos = matches;
+      state.renderedCount = 0;
+      state.thumbnailQueue = [];
+      state.thumbnailActive = 0;
+
+      replaceElementChildren(grid);
+      try {
+        renderCatalogs();
+      } catch (error) {
+        console.warn("Kunde inte rendera katalogknappar", error);
+      }
+      renderCatalogLinks();
+      currentCatalog.textContent = currentCatalogName();
+      currentCatalogCount.textContent = `(${matches.length})`;
+      empty.hidden = matches.length > 0;
+      renderNextPhotos();
+      updateLoadMoreVisibility();
+      requestAnimationFrame(handleScroll);
+    }
+
+    function initInfiniteScroll() {
+      if (!("IntersectionObserver" in window)) {
+        window.addEventListener("scroll", () => {
+          if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 800) {
+            renderNextPhotos();
+          }
+        }, { passive: true });
+        return;
+      }
+
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          renderNextPhotos();
+        }
+      }, { rootMargin: "900px 0px" });
+      observer.observe(loadMore);
+    }
+
+    function renderNextPhotos() {
+      const batchSize = 20;
+      const nextPhotos = state.visiblePhotos.slice(state.renderedCount, state.renderedCount + batchSize);
+      if (nextPhotos.length === 0) {
+        updateLoadMoreVisibility();
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (const photo of nextPhotos) {
+        try {
+          fragment.appendChild(renderPhoto(photo));
+        } catch (error) {
+          console.warn("Kunde inte rendera bild", photo, error);
+        }
+      }
+      grid.appendChild(fragment);
+      state.renderedCount += nextPhotos.length;
+      updateLoadMoreVisibility();
+      requestAnimationFrame(handleScroll);
+    }
+
+    function updateLoadMoreVisibility() {
+      loadMore.hidden = state.renderedCount >= state.visiblePhotos.length;
+    }
+
+    function renderCatalogs() {
+      const buttons = [];
+      if (state.currentPath.length > 0) {
+        buttons.push(catalogButton("Upp", () => {
+          state.currentPath = state.currentPath.slice(0, -1);
+          updateUrl(search.value);
+          render();
+        }, "up"));
+      }
+
+      for (const name of childCatalogNames(currentCatalogNode())) {
+        const childPath = [...state.currentPath, name];
+        const photoCount = photoCountInCatalog(childPath);
+        if (photoCount === 0) continue;
+        buttons.push(catalogButton(`${displayCatalogButtonName(name)} (${photoCount})`, () => {
+          state.currentPath = [...state.currentPath, name];
+          updateUrl(search.value);
+          render();
+        }));
+      }
+
+      replaceElementChildren(catalogs, buttons);
+    }
+
+    function renderCatalogLinks() {
+      const links = [
+        ...tournamentCodes(state.currentPath[state.currentPath.length - 1] || "").map((code) => codeLink(code)),
+        ...fileLinks(currentCatalogNode())
+      ];
+      replaceElementChildren(catalogLinks, links);
+    }
+
+    function currentCatalogName() {
+      if (state.currentPath.length === 0) return "Bildportalen";
+      return state.currentPath.map(displayName).join(" • ");
+    }
+
+    function displayCatalogButtonName(value) {
+      return displayName(value)
+        .replace(/,/g, "")
+        .replace(/\b(?:[ITFR]\d{5}|C\d{7})\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function catalogButton(label, onClick, className = "") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `catalog-button ${className}`.trim();
+      button.textContent = label;
+      button.addEventListener("click", onClick);
+      return button;
+    }
+
+    function currentCatalogNode() {
+      let node = state.tree;
+      for (const part of state.currentPath) {
+        node = node && node[part];
+      }
+      return node || {};
+    }
+
+    function childCatalogNames(node) {
+      return Object.entries(node || {})
+        .filter(([, value]) => value && typeof value === "object" && !Array.isArray(value))
+        .map(([name]) => name)
+        .sort((left, right) => displayName(right).localeCompare(displayName(left), "sv"));
+    }
+
+    function photosInCurrentCatalog(photos) {
+      if (state.currentPath.length === 0) return photos;
+      return photos.filter((photo) => pathStartsWith(photo.catalogPath, state.currentPath));
+    }
+
+    function photoCountInCatalog(path) {
+      const terms = normalize(search.value).split(/\s+/).filter(Boolean);
+      const photos = state.photos.filter((photo) => pathStartsWith(photo.catalogPath, path));
+      if (terms.length === 0) return photos.length;
+      return photos.filter((photo) => matchRank(photo, terms) !== null).length;
+    }
+
+    function pathStartsWith(path, prefix) {
+      return prefix.every((part, index) => path[index] === part);
+    }
+
+    function renderPhoto(photo) {
+      const figure = document.createElement("figure");
+      const image = document.createElement("img");
+      const caption = document.createElement("figcaption");
+      const name = document.createElement("div");
+      const meta = document.createElement("div");
+
+      image.dataset.thumbnailUrls = JSON.stringify(thumbnailUrls(photo));
+      image.dataset.thumbnailIndex = "0";
+      image.alt = "";
+      image.loading = "lazy";
+      image.title = photo.displayName;
+      image.addEventListener("load", markThumbnailLoaded);
+      image.addEventListener("error", retryThumbnail);
+
+      name.className = "name";
+      name.textContent = photo.displayName;
+
+      meta.className = "meta";
+      try {
+        renderPhotoMeta(meta, photo);
+      } catch (error) {
+        console.warn("Kunde inte rendera bildtext", photo, error);
+        meta.textContent = photographerTimestampText(photo);
+      }
+
+      caption.appendChild(name);
+      caption.appendChild(meta);
+      figure.appendChild(image);
+      figure.appendChild(caption);
+      figure.addEventListener("click", () => openPhoto(photo));
+      observeLazyImage(image);
+      return figure;
+    }
+
+    function createLazyImageObserver() {
+      if (!("IntersectionObserver" in window)) return null;
+      return new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            loadLazyImage(entry.target);
+          }
+        }
+      }, { rootMargin: "1000px 0px" });
+    }
+
+    function observeLazyImage(image) {
+      if (lazyImageObserver) {
+        lazyImageObserver.observe(image);
+      } else {
+        loadLazyImage(image);
+      }
+    }
+
+    function loadLazyImage(image) {
+      if (
+        image.dataset.thumbnailQueued ||
+        image.dataset.thumbnailRequesting ||
+        image.dataset.thumbnailLoaded ||
+        image.dataset.thumbnailFailed
+      ) {
+        return;
+      }
+      image.dataset.thumbnailQueued = "1";
+      state.thumbnailQueue.push(image);
+      pumpThumbnailQueue();
+    }
+
+    function pumpThumbnailQueue() {
+      const maxActive = 8;
+      while (state.thumbnailActive < maxActive && state.thumbnailQueue.length > 0) {
+        const image = state.thumbnailQueue.shift();
+        delete image.dataset.thumbnailQueued;
+        if (!image.isConnected || image.dataset.thumbnailLoaded || image.dataset.thumbnailFailed) {
+          continue;
+        }
+        startThumbnailRequest(image);
+      }
+    }
+
+    function startThumbnailRequest(image) {
+      const url = currentThumbnailUrl(image);
+      if (!url) {
+        image.dataset.thumbnailFailed = "1";
+        return;
+      }
+      image.dataset.thumbnailRequesting = "1";
+      state.thumbnailActive += 1;
+      image.src = url;
+      thumbnailTimers.set(image, window.setTimeout(() => retryThumbnailRequest(image), 3000));
+      if (lazyImageObserver) {
+        lazyImageObserver.unobserve(image);
+      }
+    }
+
+    function markThumbnailLoaded(event) {
+      const image = event.currentTarget;
+      image.dataset.thumbnailLoaded = "1";
+      clearThumbnailTimer(image);
+      releaseThumbnailSlot(image);
+    }
+
+    function retryThumbnail(event) {
+      const image = event.currentTarget;
+      clearThumbnailTimer(image);
+      retryThumbnailRequest(image);
+    }
+
+    function retryThumbnailRequest(image) {
+      const urls = parseThumbnailUrls(image);
+      const nextIndex = (Number(image.dataset.thumbnailIndex) || 0) + 1;
+      const nextUrl = urls[nextIndex];
+      if (!nextUrl) {
+        thumbnailTimers.delete(image);
+        image.dataset.thumbnailFailed = "1";
+        releaseThumbnailSlot(image);
+        return;
+      }
+      image.dataset.thumbnailIndex = String(nextIndex);
+      image.src = nextUrl;
+      thumbnailTimers.set(image, window.setTimeout(() => retryThumbnailRequest(image), 3000));
+    }
+
+    function clearThumbnailTimer(image) {
+      const timer = thumbnailTimers.get(image);
+      if (timer) {
+        window.clearTimeout(timer);
+        thumbnailTimers.delete(image);
+      }
+    }
+
+    function releaseThumbnailSlot(image) {
+      if (!image.dataset.thumbnailRequesting) return;
+      delete image.dataset.thumbnailRequesting;
+      state.thumbnailActive = Math.max(0, state.thumbnailActive - 1);
+      pumpThumbnailQueue();
+    }
+
+    function loadVisibleLazyImages() {
+      const preloadMargin = 1000;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const selector = [
+        "img[data-thumbnail-urls]",
+        ":not([data-thumbnail-loaded])",
+        ":not([data-thumbnail-failed])",
+        ":not([data-thumbnail-queued])",
+        ":not([data-thumbnail-requesting])"
+      ].join("");
+      for (const image of grid.querySelectorAll(selector)) {
+        const bounds = image.getBoundingClientRect();
+        if (bounds.top <= viewportHeight + preloadMargin && bounds.bottom >= -preloadMargin) {
+          loadLazyImage(image);
+        }
+      }
+    }
+
+    function handleScroll() {
+      loadVisibleLazyImages();
+      renderMoreIfNeeded();
+    }
+
+    function renderMoreIfNeeded() {
+      if (loadMore.hidden) return;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const bounds = loadMore.getBoundingClientRect();
+      if (bounds.top <= viewportHeight + 900) {
+        renderNextPhotos();
+      }
+    }
+
+    function currentThumbnailUrl(image) {
+      const urls = parseThumbnailUrls(image);
+      const index = Number(image.dataset.thumbnailIndex) || 0;
+      return urls[index] || "";
+    }
+
+    function parseThumbnailUrls(image) {
+      try {
+        return JSON.parse(image.dataset.thumbnailUrls || "[]");
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function replaceElementChildren(element, children = []) {
+      element.textContent = "";
+      const fragment = document.createDocumentFragment();
+      for (const child of children) {
+        fragment.appendChild(child);
+      }
+      element.appendChild(fragment);
+    }
+
+    function rankMatches(photos, terms) {
+      if (terms.length === 0) return photos;
+
+      return photos
+        .map((photo) => ({ photo, rank: matchRank(photo, terms) }))
+        .filter((entry) => entry.rank !== null)
+        .sort((a, b) => compareRanks(a.rank, b.rank) || compareFreshness(a.photo, b.photo))
+        .map((entry) => entry.photo);
+    }
+
+    function matchRank(photo, terms) {
+      const haystack = photo.haystack;
+      const positions = terms.map((term) => haystack.indexOf(term));
+      const matchedPositions = positions.filter((position) => position !== -1);
+      if (matchedPositions.length === 0) return null;
+      if (matchedPositions.length === terms.length) return 0;
+
+      const firstMatchedTerm = positions.findIndex((position) => position !== -1);
+      return firstMatchedTerm + 1;
+    }
+
+    function compareRanks(left, right) {
+      return left - right;
+    }
+
+    function normalize(value) {
+      return value.trim().toLowerCase();
+    }
+
+    function queryFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("q") || params.get("query") || "";
+    }
+
+    function folderPathFromUrl(tree) {
+      const folder = folderValueFromUrl();
+      const path = folder
+        .split("/")
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part));
+      let node = tree;
+      const validPath = [];
+      for (const part of path) {
+        if (!node || !Object.prototype.hasOwnProperty.call(node, part) || Array.isArray(node[part])) {
+          return [];
+        }
+        validPath.push(part);
+        node = node[part];
+      }
+      return validPath;
+    }
+
+    function updateUrl(value) {
+      const params = new URLSearchParams(window.location.search);
+      const query = value.trim();
+      if (query) {
+        params.set("q", query);
+      } else {
+        params.delete("q");
+        params.delete("query");
+      }
+      params.delete("folder");
+      const queryParams = params.toString();
+      const folderParam = folderValueFromPath();
+      const nextQuery = [queryParams, folderParam].filter(Boolean).join("&");
+      const next = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", next);
+    }
+
+    function folderValueFromUrl() {
+      const query = window.location.search.replace(/^\?/, "");
+      for (const part of query.split("&")) {
+        const [key, value = ""] = part.split("=");
+        if (decodeURIComponent(key.replace(/\+/g, " ")) === "folder") {
+          return value.replace(/\+/g, " ");
+        }
+      }
+      return "";
+    }
+
+    function folderValueFromPath() {
+      if (state.currentPath.length > 0) {
+        return `folder=${state.currentPath.map((part) => encodeURIComponent(part)).join("/")}`;
+      }
+      return "";
+    }
+
+    function openPhoto(photo) {
+      const viewerUrl = driveViewerUrl(photo);
+      if (viewerUrl) {
+        window.location.href = viewerUrl;
+        return;
+      }
+      openViewer(photo);
+    }
+
+    function openViewer(photo) {
+      state.viewer.photo = photo;
+      viewerImage.src = imageUrl(photo, 2400);
+      viewerImage.alt = photo.displayName;
+      viewerTitle.textContent = photo.displayName;
+      setViewerMeta(photo);
+      viewer.showModal();
+      readExif(photo);
+    }
+
+    function closeViewer() {
+      viewer.close();
+      viewerImage.removeAttribute("src");
+      state.viewer.photo = null;
+      viewerStage.classList.remove("dragging");
+    }
+
+    function setViewerMeta(photo, exif = "") {
+      renderPhotoMeta(viewerMeta, photo, exif);
+    }
+
+    function resetViewerTransform() {
+      if (!viewerImage.naturalWidth || !viewerImage.naturalHeight) return;
+      const bounds = viewerStage.getBoundingClientRect();
+      const scale = Math.min(bounds.width / viewerImage.naturalWidth, bounds.height / viewerImage.naturalHeight, 1);
+      state.viewer.scale = 1;
+      state.viewer.width = viewerImage.naturalWidth * scale;
+      state.viewer.height = viewerImage.naturalHeight * scale;
+      state.viewer.x = (bounds.width - state.viewer.width) / 2;
+      state.viewer.y = (bounds.height - state.viewer.height) / 2;
+      applyViewerTransform();
+    }
+
+    function applyViewerTransform() {
+      const view = state.viewer;
+      viewerImage.style.width = `${view.width}px`;
+      viewerImage.style.height = `${view.height}px`;
+      viewerImage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+    }
+
+    function zoomViewer(event) {
+      if (!viewerImage.naturalWidth || !viewerImage.naturalHeight) return;
+      event.preventDefault();
+      const bounds = viewerStage.getBoundingClientRect();
+      const pointerX = event.clientX - bounds.left;
+      const pointerY = event.clientY - bounds.top;
+      const view = state.viewer;
+      const nextScale = clamp(view.scale * Math.exp(-event.deltaY * 0.001), 0.5, 8);
+      const imageX = (pointerX - view.x) / view.scale;
+      const imageY = (pointerY - view.y) / view.scale;
+      view.x = pointerX - imageX * nextScale;
+      view.y = pointerY - imageY * nextScale;
+      view.scale = nextScale;
+      applyViewerTransform();
+    }
+
+    function startViewerDrag(event) {
+      if (event.button !== 0 || !viewerImage.naturalWidth) return;
+      const view = state.viewer;
+      view.pointerId = event.pointerId;
+      view.dragStartX = event.clientX;
+      view.dragStartY = event.clientY;
+      view.startX = view.x;
+      view.startY = view.y;
+      viewerStage.classList.add("dragging");
+      viewerStage.setPointerCapture(event.pointerId);
+    }
+
+    function dragViewer(event) {
+      const view = state.viewer;
+      if (view.pointerId !== event.pointerId) return;
+      view.x = view.startX + event.clientX - view.dragStartX;
+      view.y = view.startY + event.clientY - view.dragStartY;
+      applyViewerTransform();
+    }
+
+    function stopViewerDrag(event) {
+      const view = state.viewer;
+      if (view.pointerId !== event.pointerId) return;
+      view.pointerId = null;
+      viewerStage.classList.remove("dragging");
+      if (viewerStage.hasPointerCapture(event.pointerId)) {
+        viewerStage.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    async function readExif(photo) {
+      const url = imageUrl(photo, 2400);
+      if (!canReadExifUrl(url)) return;
+
+      try {
+        const response = await fetch(url, { cache: "force-cache" });
+        if (!response.ok) return;
+        const tags = parseExif(await response.arrayBuffer());
+        if (state.viewer.photo === photo && tags.length > 0) {
+          setViewerMeta(photo, tags.join(" • "));
+        }
+      } catch (error) {
+        console.warn("Kunde inte läsa EXIF", error);
+      }
+    }
+
+    function canReadExifUrl(url) {
+      const parsed = new URL(url, window.location.href);
+      return parsed.origin === window.location.origin;
+    }
+
+    function parseExif(buffer) {
+      const view = new DataView(buffer);
+      if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return [];
+
+      let offset = 2;
+      while (offset + 4 < view.byteLength) {
+        if (view.getUint8(offset) !== 0xff) return [];
+        const marker = view.getUint8(offset + 1);
+        const size = view.getUint16(offset + 2);
+        if (marker === 0xe1 && ascii(view, offset + 4, 6) === "Exif\0\0") {
+          return parseTiffExif(view, offset + 10);
+        }
+        offset += 2 + size;
+      }
+      return [];
+    }
+
+    function parseTiffExif(view, tiffOffset) {
+      const littleEndian = ascii(view, tiffOffset, 2) === "II";
+      const read16 = (offset) => view.getUint16(offset, littleEndian);
+      const read32 = (offset) => view.getUint32(offset, littleEndian);
+      const firstIfd = tiffOffset + read32(tiffOffset + 4);
+      const tags = readIfd(view, tiffOffset, firstIfd, littleEndian, read16, read32);
+      const exifOffset = tags.get(0x8769);
+      const exifTags = exifOffset ? readIfd(view, tiffOffset, tiffOffset + exifOffset, littleEndian, read16, read32) : new Map();
+
+      return [
+        textTag(tags, 0x010f, "Kamera"),
+        textTag(tags, 0x0110, ""),
+        textTag(exifTags, 0x9003, "Tagen"),
+        rationalTag(exifTags, 0x829a, "Tid", "s"),
+        apertureTag(exifTags, 0x829d),
+        isoTag(exifTags),
+        rationalTag(exifTags, 0x920a, "Brännvidd", " mm"),
+        signedRationalTag(exifTags, 0x9204, "Exponeringskompensation", " EV"),
+        textTag(exifTags, 0xa434, "Objektiv"),
+        pixelSizeTag(exifTags)
+      ].filter(Boolean);
+    }
+
+    function readIfd(view, tiffOffset, ifdOffset, littleEndian, read16, read32) {
+      const result = new Map();
+      if (ifdOffset <= 0 || ifdOffset + 2 > view.byteLength) return result;
+      const count = read16(ifdOffset);
+      for (let index = 0; index < count; index += 1) {
+        const entry = ifdOffset + 2 + index * 12;
+        if (entry + 12 > view.byteLength) break;
+        const tag = read16(entry);
+        const type = read16(entry + 2);
+        const amount = read32(entry + 4);
+        const valueOffset = entry + 8;
+        result.set(tag, exifValue(view, tiffOffset, valueOffset, type, amount, littleEndian, read16, read32));
+      }
+      return result;
+    }
+
+    function exifValue(view, tiffOffset, valueOffset, type, amount, littleEndian, read16, read32) {
+      const bytes = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 }[type] || 1;
+      const offset = bytes * amount <= 4 ? valueOffset : tiffOffset + read32(valueOffset);
+      if (offset < 0 || offset >= view.byteLength) return null;
+      if (type === 2) return ascii(view, offset, amount).replace(/\0+$/, "").trim();
+      if (type === 3) return read16(offset);
+      if (type === 4) return read32(offset);
+      if (type === 5) return read32(offset) / Math.max(read32(offset + 4), 1);
+      if (type === 9) return view.getInt32(offset, littleEndian);
+      if (type === 10) return view.getInt32(offset, littleEndian) / Math.max(view.getInt32(offset + 4, littleEndian), 1);
+      return null;
+    }
+
+    function textTag(tags, key, label) {
+      const value = tags.get(key);
+      if (!value) return "";
+      return label ? `${label}: ${value}` : value;
+    }
+
+    function rationalTag(tags, key, label, suffix) {
+      const value = tags.get(key);
+      if (!value) return "";
+      const formatted = value < 1 ? `1/${Math.round(1 / value)}` : trimNumber(value);
+      return `${label}: ${formatted}${suffix}`;
+    }
+
+    function signedRationalTag(tags, key, label, suffix) {
+      const value = tags.get(key);
+      if (value === null || value === undefined) return "";
+      return `${label}: ${trimNumber(value)}${suffix}`;
+    }
+
+    function apertureTag(tags) {
+      const value = tags.get(0x829d);
+      return value ? `Bländare: f/${trimNumber(value)}` : "";
+    }
+
+    function isoTag(tags) {
+      const value = tags.get(0x8827);
+      return value ? `ISO: ${value}` : "";
+    }
+
+    function pixelSizeTag(tags) {
+      const width = tags.get(0xa002);
+      const height = tags.get(0xa003);
+      return width && height ? `EXIF-storlek: ${width} x ${height}` : "";
+    }
+
+    function trimNumber(value) {
+      return Number(value.toFixed(2)).toString();
+    }
+
+    function ascii(view, offset, length) {
+      let text = "";
+      for (let index = 0; index < length && offset + index < view.byteLength; index += 1) {
+        text += String.fromCharCode(view.getUint8(offset + index));
+      }
+      return text;
+    }
+
+    function photographerName(key) {
+      const photographer = state.photographers[key];
+      return photographer ? photographer[0] : key;
+    }
+
+    function photoValue(value) {
+      if (value.length >= 2 && typeof value[0] === "string") {
+        return [value[0], value[1], Number(value[2]) || 0];
+      }
+      return [value[2], value[3], Number(value[4]) || 0];
+    }
+
+    function compareFreshness(left, right) {
+      return right.timestamp - left.timestamp || right.date.localeCompare(left.date);
+    }
+
+    function formatTimestamp(secondsSince1900) {
+      const unixMilliseconds = (secondsSince1900 - 2208988800) * 1000;
+      const date = new Date(unixMilliseconds);
+      if (Number.isNaN(date.getTime())) return "";
+      const year = date.getUTCFullYear();
+      const month = pad2(date.getUTCMonth() + 1);
+      const day = pad2(date.getUTCDate());
+      const hours = pad2(date.getUTCHours());
+      const minutes = pad2(date.getUTCMinutes());
+      const seconds = pad2(date.getUTCSeconds());
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function renderPhotoMeta(container, photo, exif = "") {
+      container.textContent = "";
+      const entries = photo.folders.map((folder, index) => ({
+        text: photo.displayFolders[index],
+        source: folder,
+        linkTournaments: true
+      }));
+      entries.push({ text: photographerTimestampText(photo), lineBreakBefore: true });
+      if (exif) entries.push({ text: exif });
+
+      for (const entry of entries.filter((item) => item.text)) {
+        if (container.childNodes.length > 0) {
+          if (entry.lineBreakBefore) {
+            container.appendChild(document.createElement("br"));
+          } else {
+            container.appendChild(document.createTextNode(" • "));
+          }
+        }
+        if (entry.linkTournaments) {
+          appendTextWithTournamentLinks(container, entry.text, entry.source);
+        } else {
+          container.appendChild(document.createTextNode(entry.text));
+        }
+      }
+    }
+
+    function photographerTimestampText(photo) {
+      const photographer = photo.photographerKey || photographerName(photo.photographerKey);
+      if (!photo.timestamp) return photographer;
+      return `${photographer} @ ${formatTimestamp(photo.timestamp)}`;
+    }
+
+    function appendTextWithTournamentLinks(container, text, source) {
+      container.appendChild(document.createTextNode(text));
+    }
+
+    function codeLink(code) {
+      const link = document.createElement("a");
+      const type = code[0];
+      const id = code.slice(1);
+      link.href = codeUrl(type, id);
+      link.textContent = codeLabel(type);
+      return link;
+    }
+
+    function fileLinks(node) {
+      return Object.entries(node || {})
+        .filter(([, value]) => typeof value === "string")
+        .map(([name, target]) => fileLink(name, target));
+    }
+
+    function fileLink(name, target) {
+      const link = document.createElement("a");
+      link.href = fileUrl(name, target);
+      link.textContent = displayFileName(name);
+      return link;
+    }
+
+    function fileUrl(name, target) {
+      if (/^https?:\/\//i.test(target)) {
+        return target;
+      }
+      if (/\.(?:pdf|txt)$/i.test(name)) {
+        return driveFilePreviewUrl(target);
+      }
+      return driveFileUrl(target);
+    }
+
+    function displayFileName(name) {
+      return displayName(name).replace(/\.(?:pdf|url|txt)$/i, "").trim();
+    }
+
+    function codeUrl(type, id) {
+      if (type === "C") {
+        return `https://chess-results.com/tnr${encodeURIComponent(id)}.aspx?lan=1&art=4`;
+      }
+      return `https://member.schack.se/ShowTournamentServlet?id=${encodeURIComponent(id)}&listingtype=2`;
+    }
+
+    function codeLabel(type) {
+      return type === "T" || type === "C" ? "Turnering" : "Länk";
+    }
+
+    function tournamentCodes(value) {
+      return Array.from(
+        String(value).matchAll(/(?:^|[^A-Za-z0-9])((?:T\d{5}|C\d{7}))(?=$|[^A-Za-z0-9])/g),
+        (match) => match[1]
+      );
+    }
+
+    function displayName(value) {
+      return String(value)
+        .replace(/_/g, " ")
+        .replace(/\//g, " • ")
+        .replace(/\|/g, " • ")
+        .replace(/Vy-/g, "")
+        .replace(/60plus/gi, "60+")
+        .replace(/\s+16x9\s+/gi, " ")
+        .replace(/\.jpg$/i, "")
+        .replace(/\b[ITFR]\d{5}\b/g, "")
+        .replace(/\bC\d{7}\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function imageUrl(photo, size = 1200) {
+      if (/^https?:\/\//.test(photo.key)) return photo.key;
+      if (/^[A-Za-z0-9_-]{10,}$/.test(photo.key)) {
+        return `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.key)}&sz=w${size}`;
+      }
+      return encodeURI(photo.key);
+    }
+
+    function driveFileUrl(fileId) {
+      return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view?usp=drive_link`;
+    }
+
+    function driveFilePreviewUrl(fileId) {
+      return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+    }
+
+    function googleUserContentUrl(photo, size = 640) {
+      if (/^[A-Za-z0-9_-]{10,}$/.test(photo.key)) {
+        return `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.key)}=w${size}`;
+      }
+      return "";
+    }
+
+    function thumbnailUrls(photo) {
+      return [
+        googleUserContentUrl(photo, 320),
+        imageUrl(photo, 320),
+        googleUserContentUrl(photo, 480),
+        imageUrl(photo, 480),
+        imageUrl(photo, 160)
+      ].filter(Boolean);
+    }
+
+    function driveViewerUrl(photo) {
+      if (/^[A-Za-z0-9_-]{10,}$/.test(photo.key)) {
+        return driveFileUrl(photo.key);
+      }
+      return "";
+    }
+
+  </script>
+</body>
+</html>
