@@ -108,6 +108,7 @@
     }
 
     .grid {
+      align-items: start;
       display: grid;
       gap: 18px;
       grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
@@ -123,11 +124,9 @@
     }
 
     img {
-      aspect-ratio: 4 / 3;
       background: #e2e5e1;
       display: block;
       height: auto;
-      object-fit: cover;
       width: 100%;
     }
 
@@ -581,8 +580,8 @@
 
       caption.appendChild(name);
       caption.appendChild(meta);
-      figure.appendChild(image);
       figure.appendChild(caption);
+      figure.appendChild(image);
       figure.addEventListener("click", () => openPhoto(photo));
       observeLazyImage(image);
       return figure;
