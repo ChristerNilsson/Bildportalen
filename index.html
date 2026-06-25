@@ -573,10 +573,10 @@
 
       meta.className = "meta";
       try {
-        renderPhotoMeta(meta, photo);
+        renderPhotoMeta(meta, photo, "", true);
       } catch (error) {
         console.warn("Kunde inte rendera bildtext", photo, error);
-        meta.textContent = photographerTimestampText(photo);
+        meta.textContent = photographerTimestampText(photo, true);
       }
 
       caption.appendChild(name);
@@ -1102,14 +1102,17 @@
       return String(value).padStart(2, "0");
     }
 
-    function renderPhotoMeta(container, photo, exif = "") {
+    function renderPhotoMeta(container, photo, exif = "", shortenPhotographerKey = false) {
       container.textContent = "";
       const entries = photo.folders.map((folder, index) => ({
         text: photo.displayFolders[index],
         source: folder,
         linkTournaments: true
       }));
-      entries.push({ text: photographerTimestampText(photo), lineBreakBefore: true });
+      entries.push({
+        text: photographerTimestampText(photo, shortenPhotographerKey),
+        lineBreakBefore: true
+      });
       if (exif) entries.push({ text: exif });
 
       for (const entry of entries.filter((item) => item.text)) {
@@ -1128,8 +1131,9 @@
       }
     }
 
-    function photographerTimestampText(photo) {
-      const photographer = photo.photographerKey || photographerName(photo.photographerKey);
+    function photographerTimestampText(photo, shortenKey = false) {
+      const fullKey = photo.photographerKey || photographerName(photo.photographerKey);
+      const photographer = shortenKey ? fullKey.replace(/_.+$/, "") : fullKey;
       if (!photo.timestamp) return photographer;
       return `${photographer} @ ${formatTimestamp(photo.timestamp)}`;
     }

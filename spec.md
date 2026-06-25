@@ -167,6 +167,9 @@ Strängar av typen Iddddd, Fddddd eller Rddddd ska inte visas ännu.
 
 Bildtexten ska även visa EXIF-timestamp på formatet YYYY-MM-DD HH:MM:SS
 
+När fotografens key visas ska suffixet tas bort. Detta gäller enbart visning på Card.
+T ex LOAH_26 => LOAH, LOAH_0E => LOAH
+
 Exempel på den undre bildtexten:
 ```
 2022-07-02 Schack-SM Uppsala • Sverigemästarklassen, 2022
