@@ -2,3 +2,5 @@ credentials.json
 token.json
 photographers/
 update.log
+*.zip
+bilder.json
