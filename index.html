@@ -508,7 +508,7 @@
     function displayCatalogButtonName(value) {
       return displayName(value)
         .replace(/,/g, "")
-        .replace(/\b(?:[ITFR]\d{5}|C\d{7})\b/g, "")
+        .replace(/\b(?:[ITFR]\d{5}|C\d{7}|V\d{9})\b/g, "")
         .replace(/\s+/g, " ")
         .trim();
     }
@@ -1178,16 +1178,22 @@
       if (type === "C") {
         return `https://chess-results.com/tnr${encodeURIComponent(id)}.aspx?lan=1&art=4`;
       }
+      if (type === "V") {
+        return `https://player.vimeo.com/video/${encodeURIComponent(id)}`;
+      }
       return `https://member.schack.se/ShowTournamentServlet?id=${encodeURIComponent(id)}&listingtype=2`;
     }
 
     function codeLabel(type) {
-      return type === "T" || type === "C" ? "Turnering" : "Länk";
+      if (type === "T") return "Medlemssystemet";
+      if (type === "C") return "Chess-Results";
+      if (type === "V") return "Vimeo";
+      return "Länk";
     }
 
     function tournamentCodes(value) {
       return Array.from(
-        String(value).matchAll(/(?:^|[^A-Za-z0-9])((?:T\d{5}|C\d{7}))(?=$|[^A-Za-z0-9])/g),
+        String(value).matchAll(/(?:^|[^A-Za-z0-9])((?:T\d{5}|C\d{7}|V\d{9}))(?=$|[^A-Za-z0-9])/g),
         (match) => match[1]
       );
     }
@@ -1203,6 +1209,7 @@
         .replace(/\.jpg$/i, "")
         .replace(/\b[ITFR]\d{5}\b/g, "")
         .replace(/\bC\d{7}\b/g, "")
+        .replace(/\bV\d{9}\b/g, "")
         .replace(/\s+/g, " ")
         .trim();
     }
