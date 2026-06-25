@@ -86,6 +86,8 @@ Förklaring:
 
 # index.html
 
+Panelen med sökrutan och alla knappar måste gå att scrolla bort. Den ska inte vara oberoende av bilderna.
+
 Fliknamnet ska vara Bildportalen.
 
 Lägg in en `Try it!` länk i readme.md
