@@ -20,7 +20,7 @@ Nyckeln, till exempel `LOAH`, används i `photos.json` och visas på bildkorten.
 
 URL:en ska peka på fotografens Google Drive-katalog med bilderna. Katalogen måste vara åtkomlig för uppdateringsprogrammet.
 
-Fotografens katalog kan innehålla årskataloger, turneringskataloger och underkataloger. Toppnivåkatalogerna `0000 Klubbar`, `0000 Evenemang` och `0000 Diverse` behandlas som egna huvudgrenar.
+Fotografens katalog kan innehålla årskataloger, turneringskataloger och underkataloger. `Klubbar` behandlas som en egen toppgren. `Evenemang` och `Diverse` ligger under respektive år, till exempel `2026/Evenemang`.
 
 ## Uppdatera bilddata
 
@@ -41,4 +41,3 @@ Varje fotograf får en egen json-fil i `photographers/`. Filen återskapas bara 
 ## Publicering
 
 Efter uppdatering kontrolleras ändringarna lokalt och commitas till GitHub. GitHub Pages använder filerna i detta repo, inklusive `index.html`, `photos.json` och `photographers.json`.
-

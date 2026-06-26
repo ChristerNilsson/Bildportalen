@@ -32,13 +32,22 @@ PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
 OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+BUILTIN_TOP_LEVEL_LINKS = {
+    "Help.pdf": "1-MZngZMde5PSEWFVY147ZBytqze9iGkd",
+}
 OUTPUT_SCHEMA_VERSION = 2
 IMAGE_MIME_PREFIX = "image/"
 PDF_MIME_TYPE = "application/pdf"
 LINK_FILE_EXTENSIONS = (".pdf", ".txt")
 SUPPORTED_FILE_EXTENSIONS = (*LINK_FILE_EXTENSIONS, ".url")
-TOP_LEVEL_CATALOGS = {"0000 Klubbar", "0000 Evenemang", "0000 Diverse"}
-TOP_LEVEL_CATALOGS_NORMALIZED = {catalog.casefold(): catalog for catalog in TOP_LEVEL_CATALOGS}
+TOP_LEVEL_ROOTS_NORMALIZED = {
+    "klubbar": "Klubbar",
+    "0000 klubbar": "Klubbar",
+}
+YEAR_SECTION_ALIASES = {
+    "0000 evenemang": "Evenemang",
+    "0000 diverse": "Diverse",
+}
 GOOGLE_DRIVE_FOLDER = "application/vnd.google-apps.folder"
 USER_AGENT = "Mozilla/5.0 BildbankenForAll/1.0"
 GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
@@ -140,6 +149,7 @@ def main() -> None:
         total += count
         merge_tree(photos, photographer_photos)
 
+    ensure_builtin_top_level_links(photos)
     write_json(PHOTOS_FILE, photos)
     log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
     log("Uppdatering klar.")
@@ -166,6 +176,11 @@ def ensure_json_file(path: Path, data: Any) -> None:
     if data and not path.exists():
         write_json(path, data)
         log(f"Skapade {path.name}.")
+
+
+def ensure_builtin_top_level_links(photos: dict[str, Any]) -> None:
+    for name, target in BUILTIN_TOP_LEVEL_LINKS.items():
+        photos[name] = target
 
 
 def log(message: str) -> None:
@@ -740,18 +755,18 @@ def tree_parts(parts: list[str], root_folder_name: str | None = None) -> tuple[s
     if parts:
         first = parts[0].strip()
         normalized_first = first.casefold()
-        if normalized_first in TOP_LEVEL_CATALOGS_NORMALIZED:
-            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized_first], parts[1:]
+        if normalized_first in TOP_LEVEL_ROOTS_NORMALIZED:
+            return TOP_LEVEL_ROOTS_NORMALIZED[normalized_first], parts[1:]
 
     for index, part in enumerate(parts):
         normalized = part.strip().casefold()
-        if normalized in TOP_LEVEL_CATALOGS_NORMALIZED:
-            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized], parts[index + 1:]
+        if normalized in TOP_LEVEL_ROOTS_NORMALIZED:
+            return TOP_LEVEL_ROOTS_NORMALIZED[normalized], parts[index + 1:]
 
     if root_folder_name is not None:
         normalized_root = root_folder_name.strip().casefold()
-        if normalized_root in TOP_LEVEL_CATALOGS_NORMALIZED:
-            return TOP_LEVEL_CATALOGS_NORMALIZED[normalized_root], parts
+        if normalized_root in TOP_LEVEL_ROOTS_NORMALIZED:
+            return TOP_LEVEL_ROOTS_NORMALIZED[normalized_root], parts
 
     year = next((part for part in parts if re.fullmatch(r"(?!0000)\d{4}", part)), None)
     if year is None:
@@ -768,6 +783,7 @@ def tree_parts(parts: list[str], root_folder_name: str | None = None) -> tuple[s
         year = dated or "okand"
     if parts and parts[0] == year:
         parts = parts[1:]
+    parts = [YEAR_SECTION_ALIASES.get(part.strip().casefold(), part) for part in parts]
     return year, parts
 
 

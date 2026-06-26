@@ -8,10 +8,26 @@ Detta projekt består av:
 
 # update.py
 
-På toppnivån förekommer katalogerna .. 2025, 2026, ... samt `0000 Klubbar`, `0000 Evenemang` och `0000 Diverse`
+Struktur:
+```
+2026
+	Evenemang
+	Diverse
+2025
+	Evenemang
+	Diverse
+2024
+	Evenemang
+	Diverse
+...
+Klubbar
+Help.pdf
+```
 
 Filer på toppnivån ska hanteras så här i photos.json:
 ```"Help.pdf": "1-MZngZMde5PSEWFVY147ZBytqze9iGkd"```
+
+Se till att Help.pdf kommer med i photos.json. Den ska ligga på toppnivå.
 
 Inga manifest.json ska skapas.
 
@@ -108,11 +124,11 @@ Målet är att undertrycka störande upprepning av information.
 
 ## gemensamt datum i filnamn
 
-Undertryck även gemensamt datum i filnamnens slut.
+Undertryck även gemensamt datum i filnamnens slut och text före detta datum.
 Exempel:
 ```
-Adam_2026-06-26-X.jpg
-Bertil_2026-06-26.jpg
+Adam_Öppen klass_2026-06-26-X.jpg
+Bertil_Öppen klass_2026-06-26.jpg
 ```
 ska resultera i 
 ```
@@ -167,9 +183,6 @@ Alla kataloger på aktuell nivå som visas som knappar.
 Visa så många knappar som möjligt i bredd. Just nu verkar bara 60% av bredden utnyttjas.
 Kommatecken i knapptext ska undertryckas.
 
-* länkar av typ Iddddd, Tddddd, Fddddd, Rddddd eller Vddddddddd
-	* Ska aldrig förekomma i läsbar text, enbart som länkar på en egen rad under knapparna.
-
 När man klickar på en katalog blir den katalogen aktuell katalog.
 Man ska kunna gå upp till föräldrakatalogen med knappen `Upp`.
 
@@ -190,20 +203,6 @@ I katalognamn och filnamn ska följande tecken bytas ut (enbart vid visning):
 | 16x9 |mellanslag|
 
 Avgränsarna / samt | ska ersättas med •
-
-Om strängen `T18469` finns i aktuellt katalognamn ska den visas som en länk på en egen rad:
-`https://member.schack.se/ShowTournamentServlet?id=18469&listingtype=2`
-Det gäller strängen T följd av fem siffror. Texten ska vara `Medlemssystemet`
-
-Om strängen `C1209676` finns i aktuellt katalognamn ska den visas som en länk på en egen rad:
-`https://chess-results.com/tnr1209676.aspx?lan=1&art=4`
-Det gäller strängen C följd av sju siffror. Texten ska vara `Chess-Results`
-
-Om strängen `V123456789` finns i aktuellt katalognamn ska den visas som en länk på en egen rad:
-`https://player.vimeo.com/video/123456789`
-Det gäller strängen C följd av sju siffror. Texten ska vara `Vimeo`
-
-Strängar av typen Iddddd, Fddddd eller Rddddd ska inte visas ännu.
 
 Bildtexten ska även visa EXIF-timestamp på formatet YYYY-MM-DD HH:MM:SS
 

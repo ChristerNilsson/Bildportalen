@@ -368,7 +368,9 @@
           if (Array.isArray(value)) {
             const [key, photographerKey, timestamp] = photoValue(value);
             const folders = path.slice(1);
+            const searchableFolders = path;
             const displayFolders = folders.map(displayName);
+            const searchableDisplayFolders = searchableFolders.map(displayName);
             const displayPhotoName = displayName(name);
             photos.push({
               name,
@@ -380,7 +382,12 @@
               displayFolders,
               date: findDate([...path, name]),
               timestamp,
-              haystack: [...folders, name, ...displayFolders, displayPhotoName].join(" ").toLowerCase()
+              haystack: [
+                ...searchableFolders,
+                name,
+                ...searchableDisplayFolders,
+                displayPhotoName
+              ].join(" ").toLowerCase()
             });
           } else if (value && typeof value === "object") {
             walk(value, [...path, name]);
@@ -578,10 +585,10 @@
         meta.textContent = photographerTimestampText(photo, true);
       }
 
+      figure.appendChild(image);
       caption.appendChild(name);
       caption.appendChild(meta);
       figure.appendChild(caption);
-      figure.appendChild(image);
       figure.addEventListener("click", () => openPhoto(photo));
       observeLazyImage(image);
       return figure;
@@ -771,22 +778,84 @@
 
     function suppressCommonTrailingDate(displayName, trailingDate) {
       if (!trailingDate) return displayName;
+      const match = String(displayName).match(trailingDatedNamePattern(trailingDate.date));
+      if (!match) return displayName;
 
-      return displayName
-        .replace(new RegExp(`([\\s_.-]*)${trailingDate}([\\s_.-]*(?:X|\\d+)?)$`, "i"), "$2")
+      const beforeDate = trailingDate.prefixSuffixLength
+        ? match.groups.before.slice(0, -trailingDate.prefixSuffixLength)
+        : match.groups.before;
+      const suffix = normalizeDateSuffix(match.groups.after);
+      const stripped = `${beforeDate}${suffix}`
         .replace(/^[\s_.-]+|[\s_.-]+$/g, "")
         .replace(/\s+-/g, "-")
         .replace(/-\s+/g, "-")
-        .trim() || displayName;
+        .replace(/\s+/g, " ")
+        .trim();
+      return stripped || displayName;
+    }
+
+    function normalizeDateSuffix(value) {
+      const suffix = String(value || "").replace(/^[\s_.-]+/, "").trim();
+      return suffix ? `-${suffix}` : "";
     }
 
     function commonTrailingDate(values) {
-      const dates = values
-        .map((value) => String(value).match(/\b(\d{4}-\d{2}-\d{2})(?:[\s_.-]*(?:X|\d+))*$/i))
-        .map((match) => match && match[1])
+      const parsed = values
+        .map((value) => String(value).match(/\b(?<date>\d{4}-\d{2}-\d{2})(?<after>[\s_.-]*(?:X|\d+)?)$/i))
         .filter(Boolean);
-      if (dates.length < 2 || dates.length !== values.length) return "";
-      return dates.every((date) => date === dates[0]) ? dates[0] : "";
+      if (parsed.length < 2 || parsed.length !== values.length) return null;
+      const date = parsed[0].groups.date;
+      if (!parsed.every((match) => match.groups.date === date)) return null;
+
+      const pattern = trailingDatedNamePattern(date);
+      const prefixes = values
+        .map((value) => String(value).match(pattern))
+        .filter(Boolean)
+        .map((match) => match.groups.before.replace(/[\s_.-]+$/g, ""));
+      if (prefixes.length !== values.length) return { date, prefixSuffixLength: 0 };
+      return {
+        date,
+        prefixSuffixLength: commonDisplaySuffixLength(prefixes)
+      };
+    }
+
+    function trailingDatedNamePattern(date) {
+      return new RegExp(`^(?<before>.*?)${escapeRegExp(date)}(?<after>[\\s_.-]*(?:X|\\d+)?)$`, "i");
+    }
+
+    function escapeRegExp(value) {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function commonDisplaySuffixLength(values) {
+      const texts = values.filter(Boolean);
+      if (texts.length < 2) return 0;
+
+      let suffixLength = texts[0].length;
+      const first = texts[0].toLocaleLowerCase("sv");
+      for (const text of texts.slice(1)) {
+        const current = text.toLocaleLowerCase("sv");
+        let index = 0;
+        while (
+          index < suffixLength &&
+          index < current.length &&
+          first[first.length - 1 - index] === current[current.length - 1 - index]
+        ) {
+          index += 1;
+        }
+        suffixLength = index;
+      }
+      return displaySuffixBoundaryLength(texts[0], suffixLength);
+    }
+
+    function displaySuffixBoundaryLength(text, maxLength) {
+      if (!maxLength) return 0;
+      const suffixStart = text.length - maxLength;
+      const suffix = text.slice(suffixStart);
+      const boundary = suffix.match(/^[\s\-_.:,;]+/);
+      if (boundary) return maxLength;
+      const previous = text[suffixStart - 1] || "";
+      return /[\s\-_.:,;]/.test(previous) ? maxLength : 0;
     }
 
     function displayPathText(photo) {
