@@ -86,6 +86,46 @@ Förklaring:
 
 # index.html
 
+## prefix
+
+Gå igenom träffarna innan ett sökresultat presenteras. 
+Identifiera största gemensamma prefix och se till att det inte visas
+
+Exempel: 
+```
+Vy_Pelle_Adam
+Vy_Pelle_Bertil
+```
+ska resultera i att bara följande visas.
+```
+Adam
+Bertil
+```
+
+Motsvarande gäller för den path som visas baserad på katalogdelen av kortets text.
+
+Målet är att undertrycka störande upprepning av information.
+
+## gemensamt datum i filnamn
+
+Undertryck även gemensamt datum i filnamnens slut.
+Exempel:
+```
+Adam_2026-06-26-X.jpg
+Bertil_2026-06-26.jpg
+```
+ska resultera i 
+```
+Adam-X
+Bertil
+```
+
+`â€¢` visas felaktigt i pathen på varje kort.
+
+När jag står på pathen `2026 • 2026-05-20 Stockholmsmästerskap 60+ snabb, • Diverse` visas Diverse på varje kort. Detta är onödigt.
+
+## scrollande panel införs
+
 Panelen med sökrutan och alla knappar måste gå att scrolla bort. Den ska inte vara oberoende av bilderna.
 
 Fliknamnet ska vara Bildportalen.

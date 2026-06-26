@@ -402,7 +402,7 @@
       const query = normalize(search.value);
       const terms = query.split(/\s+/).filter(Boolean);
       const photos = photosInCurrentCatalog(state.photos);
-      const matches = rankMatches(photos, terms);
+      const matches = decorateVisiblePhotos(rankMatches(photos, terms));
       state.visiblePhotos = matches;
       state.renderedCount = 0;
       state.thumbnailQueue = [];
@@ -563,12 +563,12 @@
       image.dataset.thumbnailIndex = "0";
       image.alt = "";
       image.loading = "lazy";
-      image.title = photo.displayName;
+      image.title = photo.resultDisplayName || photo.displayName;
       image.addEventListener("load", markThumbnailLoaded);
       image.addEventListener("error", retryThumbnail);
 
       name.className = "name";
-      name.textContent = photo.displayName;
+      name.textContent = photo.resultDisplayName || photo.displayName;
 
       meta.className = "meta";
       try {
@@ -753,6 +753,79 @@
         .filter((entry) => entry.rank !== null)
         .sort((a, b) => compareRanks(a.rank, b.rank) || compareFreshness(a.photo, b.photo))
         .map((entry) => entry.photo);
+    }
+
+    function decorateVisiblePhotos(photos) {
+      const namePrefixLength = commonDisplayPrefixLength(photos.map((photo) => photo.displayName));
+      const pathPrefixLength = commonDisplayPrefixLength(photos.map((photo) => displayPathText(photo)));
+      const trailingDate = commonTrailingDate(photos.map((photo) => photo.displayName));
+      return photos.map((photo) => ({
+        ...photo,
+        resultDisplayName: suppressCommonTrailingDate(
+          stripDisplayPrefix(photo.displayName, namePrefixLength),
+          trailingDate
+        ),
+        resultDisplayPath: stripDisplayPrefix(displayPathText(photo), pathPrefixLength)
+      }));
+    }
+
+    function suppressCommonTrailingDate(displayName, trailingDate) {
+      if (!trailingDate) return displayName;
+
+      return displayName
+        .replace(new RegExp(`([\\s_.-]*)${trailingDate}([\\s_.-]*(?:X|\\d+)?)$`, "i"), "$2")
+        .replace(/^[\s_.-]+|[\s_.-]+$/g, "")
+        .replace(/\s+-/g, "-")
+        .replace(/-\s+/g, "-")
+        .trim() || displayName;
+    }
+
+    function commonTrailingDate(values) {
+      const dates = values
+        .map((value) => String(value).match(/\b(\d{4}-\d{2}-\d{2})(?:[\s_.-]*(?:X|\d+))*$/i))
+        .map((match) => match && match[1])
+        .filter(Boolean);
+      if (dates.length < 2 || dates.length !== values.length) return "";
+      return dates.every((date) => date === dates[0]) ? dates[0] : "";
+    }
+
+    function displayPathText(photo) {
+      const start = Math.max(1, state.currentPath.length);
+      return photo.catalogPath.slice(start).map(displayName).join(" • ");
+    }
+
+    function commonDisplayPrefixLength(values) {
+      const texts = values.filter(Boolean);
+      if (texts.length < 2) return 0;
+
+      let prefixLength = texts[0].length;
+      const first = texts[0].toLocaleLowerCase("sv");
+      for (const text of texts.slice(1)) {
+        const current = text.toLocaleLowerCase("sv");
+        let index = 0;
+        while (index < prefixLength && first[index] === current[index]) {
+          index += 1;
+        }
+        prefixLength = index;
+      }
+      return displayBoundaryLength(texts[0], prefixLength);
+    }
+
+    function displayBoundaryLength(text, maxLength) {
+      const prefix = text.slice(0, maxLength);
+      const matches = Array.from(prefix.matchAll(/(?:\s+|[-_.:,;]+|•\s*)/g));
+      if (matches.length === 0) return 0;
+      const last = matches[matches.length - 1];
+      return last.index + last[0].length;
+    }
+
+    function stripDisplayPrefix(text, prefixLength) {
+      if (!prefixLength) return text;
+      const stripped = text
+        .slice(prefixLength)
+        .replace(/^[\s•\-_.:,;]+/, "")
+        .trim();
+      return stripped || text;
     }
 
     function matchRank(photo, terms) {
@@ -1103,11 +1176,8 @@
 
     function renderPhotoMeta(container, photo, exif = "", shortenPhotographerKey = false) {
       container.textContent = "";
-      const entries = photo.folders.map((folder, index) => ({
-        text: photo.displayFolders[index],
-        source: folder,
-        linkTournaments: true
-      }));
+      const pathText = photo.resultDisplayPath || displayPathText(photo);
+      const entries = pathText ? [{ text: pathText }] : [];
       entries.push({
         text: photographerTimestampText(photo, shortenPhotographerKey),
         lineBreakBefore: true
