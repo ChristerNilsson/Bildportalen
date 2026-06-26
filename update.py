@@ -32,9 +32,6 @@ PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
 OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-BUILTIN_TOP_LEVEL_LINKS = {
-    "Help.pdf": "1-MZngZMde5PSEWFVY147ZBytqze9iGkd",
-}
 OUTPUT_SCHEMA_VERSION = 2
 IMAGE_MIME_PREFIX = "image/"
 PDF_MIME_TYPE = "application/pdf"
@@ -100,9 +97,61 @@ def main() -> None:
             log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
             continue
 
-        folder_id = drive_id_from_url(photographer[1])
+        source_url = photographer[1]
+        folder_id = drive_folder_id_from_url(source_url)
+        file_id = drive_file_id_from_url(source_url)
+        if folder_id is None and file_id is None:
+            folder_id = drive_id_from_url(source_url)
         if folder_id is None:
-            log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {photographer[1]!r}.")
+            if file_id is None:
+                log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
+                continue
+
+            log_step(f"Hämtar {photographer_key}.")
+            photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
+            changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
+            old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
+            changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
+
+            if OAUTH_TOKEN and old_photographer_photos and changes_state:
+                changed = photographer_has_drive_changes(changes_state)
+                if not changed:
+                    log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+                    ensure_json_file(photographer_file, old_photographer_photos)
+                    write_json(changes_file, changes_state)
+                    total += count_photos(old_photographer_photos)
+                    merge_tree(photos, old_photographer_photos)
+                    continue
+
+            photographer_photos: dict[str, Any] = {}
+            drive_entries: list[dict[str, Any]] = []
+            add_drive_file(
+                photographer_photos,
+                photographer_key,
+                file_id,
+                drive_entries,
+                fallback_name=drive_file_fallback_name(photographer_key, photographer),
+            )
+            count = count_photos(photographer_photos)
+
+            if count_entries(photographer_photos) == 0 and old_photographer_photos:
+                log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
+                photographer_photos = old_photographer_photos
+                count = count_photos(photographer_photos)
+            elif photographer_photos != old_photographer_photos:
+                write_json(photographer_file, photographer_photos)
+                log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
+            else:
+                log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+
+            if OAUTH_TOKEN:
+                try:
+                    write_json(changes_file, build_changes_state(file_id, drive_entries))
+                except RuntimeError as error:
+                    log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
+
+            total += count
+            merge_tree(photos, photographer_photos)
             continue
 
         log_step(f"Hämtar {photographer_key}.")
@@ -149,7 +198,6 @@ def main() -> None:
         total += count
         merge_tree(photos, photographer_photos)
 
-    ensure_builtin_top_level_links(photos)
     write_json(PHOTOS_FILE, photos)
     log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
     log("Uppdatering klar.")
@@ -176,11 +224,6 @@ def ensure_json_file(path: Path, data: Any) -> None:
     if data and not path.exists():
         write_json(path, data)
         log(f"Skapade {path.name}.")
-
-
-def ensure_builtin_top_level_links(photos: dict[str, Any]) -> None:
-    for name, target in BUILTIN_TOP_LEVEL_LINKS.items():
-        photos[name] = target
 
 
 def log(message: str) -> None:
@@ -240,12 +283,44 @@ def drive_id_from_url(url: str) -> str | None:
     match = re.search(r"/folders/([A-Za-z0-9_-]+)", parsed.path)
     if match:
         return match.group(1)
+    match = re.search(r"/file/d/([A-Za-z0-9_-]+)", parsed.path)
+    if match:
+        return match.group(1)
     query_id = parse_qs(parsed.query).get("id")
     if query_id:
         return query_id[0]
     if re.fullmatch(r"[A-Za-z0-9_-]{10,}", url):
         return url
     return None
+
+
+def drive_folder_id_from_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    match = re.search(r"/folders/([A-Za-z0-9_-]+)", parsed.path)
+    if match:
+        return match.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{10,}", url):
+        return url
+    return None
+
+
+def drive_file_id_from_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    match = re.search(r"/file/d/([A-Za-z0-9_-]+)", parsed.path)
+    if match:
+        return match.group(1)
+    query_id = parse_qs(parsed.query).get("id")
+    if query_id and "uc" in parsed.path:
+        return query_id[0]
+    return None
+
+
+def drive_file_fallback_name(photographer_key: str, photographer: list[Any]) -> str:
+    if len(photographer) >= 3 and isinstance(photographer[2], str) and photographer[2].strip():
+        return photographer[2].strip()
+    if photographer_key.casefold() == "help":
+        return "Help.pdf"
+    return ""
 
 
 def photographer_has_drive_changes(changes_state: dict[str, Any]) -> bool:
@@ -318,6 +393,74 @@ def get_drive_start_page_token() -> str:
         + urlencode({"fields": "startPageToken", "supportsAllDrives": "true"})
     )
     return data.get("startPageToken", "")
+
+
+def add_drive_file(
+    photos: dict[str, Any],
+    photographer_key: str,
+    file_id: str,
+    drive_entries: list[dict[str, Any]],
+    fallback_name: str = "",
+) -> int:
+    try:
+        item = get_drive_file_item(file_id, fallback_name)
+    except RuntimeError as error:
+        log(f"Hoppar över Drive-fil {file_id}: {error}")
+        return 0
+
+    drive_entries.append(
+        {
+            "id": item.id,
+            "name": item.name,
+            "mimeType": item.mime_type,
+            "modifiedTime": item.modified_time,
+            "takenTime": item.taken_time,
+            "path": item.name,
+        }
+    )
+
+    if item.is_url_file:
+        try:
+            target_url = read_url_file(item.id)
+        except RuntimeError as error:
+            log_detail(f"Hoppar över {item.name}: {error}")
+            return 0
+        link_name = re.sub(r"\.url$", "", item.name, flags=re.IGNORECASE)
+        insert_file(photos, [], link_name, target_url, preserve_top_level=True)
+        return 1
+    if item.is_link_file:
+        insert_file(photos, [], item.name, item.id, preserve_top_level=True)
+        return 1
+    if item.is_image:
+        insert_file(photos, [], item.name, [item.id, photographer_key, item.taken_time])
+        return 1
+
+    log_detail(f"Hoppar över {item.name}: filtypen {item.mime_type!r} stöds inte.")
+    return 0
+
+
+def get_drive_file_item(file_id: str, fallback_name: str = "") -> DriveItem:
+    if OAUTH_TOKEN or GOOGLE_DRIVE_API_KEY:
+        query = {
+            "fields": "id,name,mimeType,modifiedTime,imageMediaMetadata(time)",
+            "supportsAllDrives": "true",
+        }
+        if not OAUTH_TOKEN:
+            query["key"] = GOOGLE_DRIVE_API_KEY
+        data = fetch_drive_json(f"https://www.googleapis.com/drive/v3/files/{file_id}?" + urlencode(query))
+        name = repair_text(data.get("name", ""))
+        mime_type = data.get("mimeType", "")
+        modified_time = data.get("modifiedTime", "")
+        image_time = (data.get("imageMediaMetadata") or {}).get("time", "")
+        taken_time = timestamp_seconds_since_1900(image_time) or timestamp_seconds_since_1900(modified_time)
+        if name and mime_type:
+            return DriveItem(file_id, name, mime_type, modified_time, taken_time)
+
+    if fallback_name:
+        mime_type = PDF_MIME_TYPE if fallback_name.lower().endswith(".pdf") else "application/octet-stream"
+        return DriveItem(file_id, fallback_name, mime_type)
+
+    raise RuntimeError("kunde inte läsa filmetadata.")
 
 
 def add_drive_folder(

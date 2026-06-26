@@ -25,9 +25,9 @@ Help.pdf
 ```
 
 Filer på toppnivån ska hanteras så här i photos.json:
-```"Help.pdf": "1-MZngZMde5PSEWFVY147ZBytqze9iGkd"```
+```"Help.pdf": "64-kodning"```
 
-Se till att Help.pdf kommer med i photos.json. Den ska ligga på toppnivå.
+Se till att Help.pdf kommer med i photos.json. Den ska ligga på toppnivå och hanteras av photographers.json
 
 Inga manifest.json ska skapas.
 

@@ -20,10 +20,6 @@
 
 ## DONE 
 
-### Chess-Results
-
-* [ ] C1209676 => "https://chess-results.com/tnr1209676.aspx?lan=1&art=4"
-
 ### GUI Katalogknappar
 
 * Typ 2026, turneringskataloger samt grupper.
@@ -31,13 +27,12 @@
 * `Upp` för att komma tillbaka.
 
 ### PYTHON och GUI Länk till Inbjudan och Fakta
-* I12345 och F12345 tas bort 
+* I12345, F12345, T12345 och C1234567 tas bort
 * Ersätts med följande alternativ
 	* inbjudan.pdf
 	* fakta.txt
 	* övrigt.url
 		* Kan peka på godtycklig webbsida
-* T12345 och C1234567 fungerar som tidigare. Dvs läggs i slutet på katalognamnet
 
 ### GUI Knappar
 * [x] Share kan skippas. Urlen ska vara up to date. Dvs vald katalog och söksträng
@@ -51,10 +46,6 @@
 
 ### GUI Selektion med kryssrutor och bildspel
 * [x] Tas bort - verkar inte användas.
-
-### GUI Turneringslänk
-* [x] T12345 är löst. Medlemssystemet enbart.
-
 
 
 ## SKA EJ GÖRAS
