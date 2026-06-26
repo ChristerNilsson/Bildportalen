@@ -8,9 +8,12 @@ Skriv i sökfältet för att söka på katalognamn och bildfilnamn.
 
 Du kan söka på ett eller flera ord: 
 
-```anna cramling```
+```adam bertil cesar```
 
-Träffar som innehåller alla orden visas först. Därefter visas träffar på första ordet och så vidare.
+Först visar alla bilder med tre träffar.
+Därefter visas bilder med två träffar.
+Slutligen bilder med en träff.
+Ord i början på raden har större tyngd.
 
 Om sökfältet är tomt visas alla bilder i den aktuella katalogen.  
 Du kan binda ihop ord. anna_cramling  
@@ -20,12 +23,31 @@ Bilder läses in efter hand när du scrollar.
 
 Katalogknapparna visar katalogerna på aktuell nivå. Siffran inom parentes visar hur många bilder som finns i katalogen. Klicka på en katalog för att gå ner i den. Använd `Upp` för att gå tillbaka till föräldrakatalogen.
 
-Sökfältet visas högst upp. Aktuell sökväg visas under sökfältet, med antal matchande bilder direkt till höger, till exempel `2026 • Turnering (123)`. På toppnivån visas `Bildportalen`. Antalet räknas om när du skriver i sökfältet.
+Sökfältet visas högst upp. Aktuell sökväg visas under sökfältet, med antal matchande bilder direkt till höger, till exempel `2026 • Påskturneringen (123)`. På toppnivån visas `Bildportalen`. Antalet räknas om när du skriver i sökfältet.
 
 Sökning och bildlistan gäller inom den aktuella katalogen.
 
-Koder som `T18469` eller `C1209676` visas inte i katalog- eller bildtext. När aktuell katalog innehåller en sådan kod visas länken `Turnering` på egen rad ovanför katalogknapparna. 
-PDF-, URL- och TXT-filer i aktuell katalog visas också som länkar, med filnamnet som länktext. 
+Vill man skapa länkar avseende en viss katalog, kan man göra det genom att lägga in filer i katalogen
+
+Till exempel
+* Inbjudan.pdf
+* Fakta.pdf
+* Resultat.pdf
+
+Man kan även droppa länkar i en katalog
+* SM-Blixten 2025.url
+* Chess-Results Server Chess-results.com - Schack56mästaren 1 2026.url
+* Video.url
+
+Innehållet i en url är en vanlig textfil och kan se ut så här:
+```
+[InternetShortcut]
+URL=https://member.schack.se/ShowTournamentServlet?id=15056
+```
+
+Dessa namn är enbart rekommendationer, men de kommer att synas för användaren som klickbara länkar.
+Lämpligt är att korta ner `Chess-Results Server Chess-results.com - Schack56mästaren 1 2026.url` till ` Schack56mästaren 1 2026.url`
+
 Bildtexten visar katalognamn, fotograf och knäpptidpunkt, till exempel `LOAH @ 2022-07-10 15:58:00`.
 
 ## URL
@@ -64,10 +86,6 @@ https://drive.google.com/drive/folders/1jAaO5eTMgH7jYr1O7stv1dlxO4ylbICX?usp=sha
 
 .pdf, .txt och .url kan läggas i turneringskataloger eller direkt i rotkatalogen. De kommer att visas som länkar när katalogen är aktuell.
 
-Turneringsresultat kan även visas med T12345 eller C1234567.
-* T : member.schack.se
-* C : chess-results.com
-
 Exempel: `2022-04-12_Tyresö SK 50år, Jubileumsturnering 2022_C1209676`
 
 ## Kataloger
@@ -76,26 +94,26 @@ Följande katalognamn används på de högsta nivåerna:
 
 ```text
 2026
+	2026-01-01 Januari-blixten
+		Klass A
+		Klass B
+	Evenemang
+	Diverse
 2025
+	2025-01-01 Januari-blixten
+	Evenemang
+	Diverse
 osv
-0000 Klubbar
+Klubbar
 	Seniorschack Stockholm
 	Farsta SK
-	osv
-0000 Evenemang
-	2026
-	2025
-	osv
-0000 Diverse
-	2026
-	2025
 	osv
 ```
 
 Under året, skapa en katalog per turnering eller händelse. Ta med datum och tydligt namn:
 
 ```text
-2026-03-14 Skol-SM Stockholm_T12345
+2026-03-14 Skol-SM Stockholm
 ```
 
 Bra katalognamn gör bilderna lättare att hitta.
@@ -157,8 +175,6 @@ Undvik däremot att radera en bild och ladda upp den igen om den redan finns i B
 Kontrollera att administratören har åtkomst till katalogen. Om bilderna inte kan läsas kommer de inte med i nästa uppdatering.
 
 
-
-
 # Bildportalen - admin
 
 Den här filen är för den som administrerar Bildbanken och lägger till producenter, dvs fotografer.
@@ -213,7 +229,7 @@ Om GitHub Actions används ska motsvarande Google-credentials ligga som GitHub S
 
 ## Krockar
 
-Kataloger med samma namn mergeas. Om två fotografer har `2026` hamnar bådas innehåll under samma `2026`.
+Kataloger med samma namn mergas. Om två fotografer har `2026` hamnar bådas innehåll under samma `2026`.
 
 Exakt samma sökväg och filnamn kan däremot krocka, till exempel:
 
@@ -226,9 +242,3 @@ Om två fotografer har samma sökväg kan den senare skriva över den tidigare i
 ## Viktigt
 
 Google Drive-filens id är det stabila. Fotografen kan byta katalognamn och filnamn utan att bilden slutar fungera, så länge filen inte raderas och laddas upp igen.
-
-## Länkar
-
-* T: member.schack.se
-* C: chess-results
-* pdf-filer: Lägges i lämplig turneringskatalog
