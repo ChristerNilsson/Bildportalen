@@ -452,7 +452,7 @@ def get_drive_file_item(file_id: str, fallback_name: str = "") -> DriveItem:
         mime_type = data.get("mimeType", "")
         modified_time = data.get("modifiedTime", "")
         image_time = (data.get("imageMediaMetadata") or {}).get("time", "")
-        taken_time = timestamp_seconds_since_1900(image_time) or timestamp_seconds_since_1900(modified_time)
+        taken_time = drive_image_taken_time(image_time, modified_time)
         if name and mime_type:
             return DriveItem(file_id, name, mime_type, modified_time, taken_time)
 
@@ -600,7 +600,7 @@ def list_drive_folder_api(folder_id: str) -> list[DriveItem]:
             if item_id and name and mime_type:
                 image_time = (entry.get("imageMediaMetadata") or {}).get("time", "")
                 modified_time = entry.get("modifiedTime", "")
-                taken_time = timestamp_seconds_since_1900(image_time) or timestamp_seconds_since_1900(modified_time)
+                taken_time = drive_image_taken_time(image_time, modified_time)
                 items.append(DriveItem(item_id, name, mime_type, modified_time, taken_time))
 
         page_token = data.get("nextPageToken", "")
@@ -856,6 +856,17 @@ def timestamp_seconds_since_1900(value: str) -> int:
 
     epoch = datetime(1900, 1, 1, tzinfo=timezone.utc)
     return round((parsed.astimezone(timezone.utc) - epoch).total_seconds())
+
+
+def drive_image_taken_time(image_time: str, modified_time: str) -> int:
+    taken_time = timestamp_seconds_since_1900(image_time)
+    if not taken_time:
+        return 0
+
+    modified_timestamp = timestamp_seconds_since_1900(modified_time)
+    if modified_timestamp and abs(taken_time - modified_timestamp) <= 1:
+        return 0
+    return taken_time
 
 
 def insert_file(

@@ -99,6 +99,7 @@ Förklaring:
 * 1u_AMCbDDgpBuUKPFiR-lB0IYuEJbrWzS = Bildfilens nyckel
 * LOAH = Fotografens nyckel
 * 1234567891 = sekunder sedan 1900-01-01 00:00:00. Dvs EXIF-tiden för bildens tagande.
+Knäpptiden är felaktig. Enligt den har alla bilder tagits senaste dygnet.
 
 # index.html
 
