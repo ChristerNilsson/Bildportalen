@@ -2,7 +2,7 @@ name: Hourly time log
 
 on:
   schedule:
-    - cron: "40 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
