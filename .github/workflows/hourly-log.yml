@@ -30,3 +30,8 @@ jobs:
             git commit -m "Log hourly timestamp"
             git push
           fi
+
+      - name: Show result
+        if: always()
+        run: |
+          echo "Workflow finished with status: ${{ job.status }}"
