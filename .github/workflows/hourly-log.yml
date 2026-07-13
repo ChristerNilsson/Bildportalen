@@ -16,6 +16,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Before script
+        run: | 
+          echo "Workflow finished with status: ${{ job.status }}"
+
       - name: Append current time
         run: python scripts/log_time.py
 
@@ -31,7 +35,6 @@ jobs:
             git push
           fi
 
-      - name: Show result
-        if: always()
+      - name: After script
         run: |
           echo "Workflow finished with status: ${{ job.status }}"
