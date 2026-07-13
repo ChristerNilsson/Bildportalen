@@ -18,7 +18,7 @@ jobs:
 
       - name: Before script
         run: | 
-          echo "Workflow finished with status: ${{ job.status }}"
+          echo "Before script status: ${{ job.status }}"
 
       - name: Append current time
         run: python scripts/log_time.py
@@ -37,4 +37,4 @@ jobs:
 
       - name: After script
         run: |
-          echo "Workflow finished with status: ${{ job.status }}"
+          echo "After script status: ${{ job.status }}"
