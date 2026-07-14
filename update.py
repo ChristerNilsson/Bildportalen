@@ -27,10 +27,8 @@ except ImportError:
     InstalledAppFlow = None
 
 
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 ROOT = Path(__file__).resolve().parent
+REPO_ROOT = ROOT
 
 LOG_FILE_NAME = f"{datetime.now(timezone.utc).year}.log"
 LOG_FILE = ROOT / LOG_FILE_NAME
@@ -77,6 +75,26 @@ def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def commit_and_push_updates() -> None:
+    run_git("add", LOG_FILE_NAME)
+    run_git("add", str(PHOTOS_FILE.relative_to(REPO_ROOT)))
+
+    diff = run_git("diff", "--cached", "--quiet", check=False)
+    if diff.returncode == 0:
+        log("Inga Git-ändringar att committa.")
+        return
+    if diff.returncode != 1:
+        raise subprocess.CalledProcessError(
+            diff.returncode,
+            diff.args,
+            output=diff.stdout,
+            stderr=diff.stderr,
+        )
+
+    run_git("commit", "-m", "Update photo data")
+    run_git("push")
 
 
 
@@ -1006,8 +1024,12 @@ def main() -> None:
 
     write_json(PHOTOS_FILE, photos)
     log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
+    
     duration = time.perf_counter() - started
     log(f"Uppdatering klar. {duration:.3f} sekunder")
+
+    commit_and_push_updates()
+
 
 if __name__ == "__main__":
     main()
