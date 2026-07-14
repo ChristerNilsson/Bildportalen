@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
+import time
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,9 +19,12 @@ def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
+    started = time.perf_counter()
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    duration = time.perf_counter() - started
+
     with LOG_FILE.open("a", encoding="utf-8") as log:
-        log.write(f"{timestamp}\n")
+        log.write(f"{timestamp} duration={duration:.3f}s\n")
 
     run_git("add", "2026.log")
 
