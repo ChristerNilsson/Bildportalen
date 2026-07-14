@@ -4,6 +4,9 @@ import html
 import json
 import os
 import re
+import subprocess
+import time
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,10 +27,17 @@ except ImportError:
     InstalledAppFlow = None
 
 
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 ROOT = Path(__file__).resolve().parent
+
+LOG_FILE_NAME = f"{datetime.now(timezone.utc).year}.log"
+LOG_FILE = ROOT / LOG_FILE_NAME
+
+
 PHOTOGRAPHERS_FILE = ROOT / "photographers.json"
 PHOTOS_FILE = ROOT / "photos.json"
-LOG_FILE = ROOT / "update.log"
 PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
@@ -49,6 +59,25 @@ GOOGLE_DRIVE_FOLDER = "application/vnd.google-apps.folder"
 USER_AGENT = "Mozilla/5.0 BildbankenForAll/1.0"
 GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
 OAUTH_TOKEN = ""
+
+
+def log(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    line = f"{timestamp} {message}"
+    print(line)
+    with LOG_FILE.open("a", encoding="utf-8") as file:
+        file.write(line + "\n")
+
+
+def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        check=check,
+        text=True,
+        capture_output=True,
+    )
+
 
 
 @dataclass(frozen=True)
@@ -97,14 +126,6 @@ def ensure_json_file(path: Path, data: Any) -> None:
     if data and not path.exists():
         write_json(path, data)
         log(f"Skapade {path.name}.")
-
-
-def log(message: str) -> None:
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    line = f"{timestamp} {message}"
-    print(line)
-    with LOG_FILE.open("a", encoding="utf-8") as file:
-        file.write(line + "\n")
 
 
 def log_step(message: str) -> None:
@@ -829,10 +850,41 @@ def count_entries(node: Any) -> int:
         return sum(count_entries(child) for child in node.values())
     return 0
 
+# from log_time
+# def main() -> None:
+#     started = time.perf_counter()
+#     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+#     duration = time.perf_counter() - started
+#     with LOG_FILE.open("a", encoding="utf-8") as log:
+#         log(f"{timestamp} duration={duration:.3f}s {z}\n")
+
+#     run_git("add", LOG_FILE_NAME)
+
+#     diff = run_git("diff", "--cached", "--quiet", check=False)
+#     if diff.returncode == 0:
+#         print("No log changes to commit")
+#         return
+
+#     if diff.returncode != 1:
+#         raise subprocess.CalledProcessError(
+#             diff.returncode,
+#             diff.args,
+#             output=diff.stdout,
+#             stderr=diff.stderr,
+#         )
+
+#     run_git("commit", "-m", "Log timestamp")
+#     run_git("push")
+#
+
 
 def main() -> None:
     global OAUTH_TOKEN
     start_log_section()
+    started = time.perf_counter()
+
     log("Startar uppdatering.")
     OAUTH_TOKEN = load_oauth_token()
     if OAUTH_TOKEN:
@@ -954,7 +1006,8 @@ def main() -> None:
 
     write_json(PHOTOS_FILE, photos)
     log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
-    log("Uppdatering klar.")
+    duration = time.perf_counter() - started
+    log(f"Uppdatering klar. {duration:.3f} sekunder")
 
 if __name__ == "__main__":
     main()
