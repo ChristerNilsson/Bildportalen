@@ -6,8 +6,12 @@
 
 ### PYTHON Automatisk exekvering av update.py
 
-* Github secrets
-* schedule cron
+Denna sker med hjälp av Win11 Task Scheduler.  
+Den är inställd på uppdatering varje timme 00:17, 01:17 osv.  
+Resultatet loggas i yyyy.log. T ex 2026.log.  
+
+Github Actions testades först, men den visade sig inte vara tillförlitlig.
+Ex: Jag ville köra update en gång per timme. Det blev var tredje timme. Detta för en enkel loggning.
 
 ## LOW ###################
 

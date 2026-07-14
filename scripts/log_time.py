@@ -5,17 +5,10 @@ import time
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LOG_FILE = REPO_ROOT / "2026.log"
+LOG_FILE_NAME = f"{datetime.now(timezone.utc).year}.log"
+LOG_FILE = REPO_ROOT / LOG_FILE_NAME
 
-def fib(n: int) -> int:
-    if n < 0:
-        raise ValueError("n must be a non-negative integer")
-    elif n > 1:
-        return fib(n - 1) + fib(n - 2)
-    else: return n
-
-
-# print(fib(30))
+def fib(n: int) -> int: return fib(n - 1) + fib(n - 2) if n > 1 else n
 
 
 def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -32,12 +25,13 @@ def main() -> None:
     started = time.perf_counter()
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    run_git("add", "2026.log")
     z = fib(31)
 
     duration = time.perf_counter() - started
     with LOG_FILE.open("a", encoding="utf-8") as log:
         log.write(f"{timestamp} duration={duration:.3f}s {z}\n")
+
+    run_git("add", LOG_FILE_NAME)
 
     diff = run_git("diff", "--cached", "--quiet", check=False)
     if diff.returncode == 0:

@@ -76,133 +76,6 @@ class DriveItem:
         return self.name.lower().endswith(".url")
 
 
-def main() -> None:
-    global OAUTH_TOKEN
-    start_log_section()
-    log("Startar uppdatering.")
-    OAUTH_TOKEN = load_oauth_token()
-    if OAUTH_TOKEN:
-        log_step("OAuth används för Drive API och ändringskontroll.")
-    elif GOOGLE_DRIVE_API_KEY:
-        log_step("Google Drive API används för katalogkontroll.")
-    else:
-        log_step("GOOGLE_DRIVE_API_KEY saknas. Faller tillbaka till HTML-läsning.")
-
-    photographers = read_json(PHOTOGRAPHERS_FILE, {})
-    photos: dict[str, Any] = {}
-    total = 0
-
-    for photographer_key, photographer in photographers.items():
-        if not isinstance(photographer, list) or len(photographer) < 2:
-            log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
-            continue
-
-        source_url = photographer[1]
-        folder_id = drive_folder_id_from_url(source_url)
-        file_id = drive_file_id_from_url(source_url)
-        if folder_id is None and file_id is None:
-            folder_id = drive_id_from_url(source_url)
-        if folder_id is None:
-            if file_id is None:
-                log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
-                continue
-
-            log_step(f"Hämtar {photographer_key}.")
-            photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
-            changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
-            old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
-            changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
-
-            if OAUTH_TOKEN and old_photographer_photos and changes_state:
-                changed = photographer_has_drive_changes(changes_state)
-                if not changed:
-                    log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-                    ensure_json_file(photographer_file, old_photographer_photos)
-                    write_json(changes_file, changes_state)
-                    total += count_photos(old_photographer_photos)
-                    merge_tree(photos, old_photographer_photos)
-                    continue
-
-            photographer_photos: dict[str, Any] = {}
-            drive_entries: list[dict[str, Any]] = []
-            add_drive_file(
-                photographer_photos,
-                photographer_key,
-                file_id,
-                drive_entries,
-                fallback_name=drive_file_fallback_name(photographer_key, photographer),
-            )
-            count = count_photos(photographer_photos)
-
-            if count_entries(photographer_photos) == 0 and old_photographer_photos:
-                log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
-                photographer_photos = old_photographer_photos
-                count = count_photos(photographer_photos)
-            elif photographer_photos != old_photographer_photos:
-                write_json(photographer_file, photographer_photos)
-                log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
-            else:
-                log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-
-            if OAUTH_TOKEN:
-                try:
-                    write_json(changes_file, build_changes_state(file_id, drive_entries))
-                except RuntimeError as error:
-                    log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
-
-            total += count
-            merge_tree(photos, photographer_photos)
-            continue
-
-        log_step(f"Hämtar {photographer_key}.")
-        photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
-        changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
-        old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
-        changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
-
-        if OAUTH_TOKEN and old_photographer_photos and changes_state:
-            changed = photographer_has_drive_changes(changes_state)
-            if not changed and contains_okand(old_photographer_photos):
-                changed = True
-                log_detail(f"Omgenererar {photographer_file.name} eftersom den innehåller okand.")
-            if not changed:
-                log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-                ensure_json_file(photographer_file, old_photographer_photos)
-                write_json(changes_file, changes_state)
-                total += count_photos(old_photographer_photos)
-                merge_tree(photos, old_photographer_photos)
-                continue
-
-        photographer_photos: dict[str, Any] = {}
-        drive_entries: list[dict[str, Any]] = []
-
-        add_drive_folder(photographer_photos, photographer_key, folder_id, [], drive_entries)
-        count = count_photos(photographer_photos)
-
-        if count_entries(photographer_photos) == 0 and old_photographer_photos:
-            log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
-            photographer_photos = old_photographer_photos
-            count = count_photos(photographer_photos)
-        elif photographer_photos != old_photographer_photos:
-            write_json(photographer_file, photographer_photos)
-            log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
-        else:
-            log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-
-        if OAUTH_TOKEN:
-            try:
-                write_json(changes_file, build_changes_state(folder_id, drive_entries))
-            except RuntimeError as error:
-                log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
-
-        total += count
-        merge_tree(photos, photographer_photos)
-
-    write_json(PHOTOS_FILE, photos)
-    log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
-    log("Uppdatering klar.")
-
-
 def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
@@ -956,6 +829,132 @@ def count_entries(node: Any) -> int:
         return sum(count_entries(child) for child in node.values())
     return 0
 
+
+def main() -> None:
+    global OAUTH_TOKEN
+    start_log_section()
+    log("Startar uppdatering.")
+    OAUTH_TOKEN = load_oauth_token()
+    if OAUTH_TOKEN:
+        log_step("OAuth används för Drive API och ändringskontroll.")
+    elif GOOGLE_DRIVE_API_KEY:
+        log_step("Google Drive API används för katalogkontroll.")
+    else:
+        log_step("GOOGLE_DRIVE_API_KEY saknas. Faller tillbaka till HTML-läsning.")
+
+    photographers = read_json(PHOTOGRAPHERS_FILE, {})
+    photos: dict[str, Any] = {}
+    total = 0
+
+    for photographer_key, photographer in photographers.items():
+        if not isinstance(photographer, list) or len(photographer) < 2:
+            log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
+            continue
+
+        source_url = photographer[1]
+        folder_id = drive_folder_id_from_url(source_url)
+        file_id = drive_file_id_from_url(source_url)
+        if folder_id is None and file_id is None:
+            folder_id = drive_id_from_url(source_url)
+        if folder_id is None:
+            if file_id is None:
+                log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
+                continue
+
+            log_step(f"Hämtar {photographer_key}.")
+            photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
+            changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
+            old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
+            changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
+
+            if OAUTH_TOKEN and old_photographer_photos and changes_state:
+                changed = photographer_has_drive_changes(changes_state)
+                if not changed:
+                    log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+                    ensure_json_file(photographer_file, old_photographer_photos)
+                    write_json(changes_file, changes_state)
+                    total += count_photos(old_photographer_photos)
+                    merge_tree(photos, old_photographer_photos)
+                    continue
+
+            photographer_photos: dict[str, Any] = {}
+            drive_entries: list[dict[str, Any]] = []
+            add_drive_file(
+                photographer_photos,
+                photographer_key,
+                file_id,
+                drive_entries,
+                fallback_name=drive_file_fallback_name(photographer_key, photographer),
+            )
+            count = count_photos(photographer_photos)
+
+            if count_entries(photographer_photos) == 0 and old_photographer_photos:
+                log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
+                photographer_photos = old_photographer_photos
+                count = count_photos(photographer_photos)
+            elif photographer_photos != old_photographer_photos:
+                write_json(photographer_file, photographer_photos)
+                log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
+            else:
+                log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+
+            if OAUTH_TOKEN:
+                try:
+                    write_json(changes_file, build_changes_state(file_id, drive_entries))
+                except RuntimeError as error:
+                    log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
+
+            total += count
+            merge_tree(photos, photographer_photos)
+            continue
+
+        log_step(f"Hämtar {photographer_key}.")
+        photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
+        changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
+        old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
+        changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
+
+        if OAUTH_TOKEN and old_photographer_photos and changes_state:
+            changed = photographer_has_drive_changes(changes_state)
+            if not changed and contains_okand(old_photographer_photos):
+                changed = True
+                log_detail(f"Omgenererar {photographer_file.name} eftersom den innehåller okand.")
+            if not changed:
+                log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+                ensure_json_file(photographer_file, old_photographer_photos)
+                write_json(changes_file, changes_state)
+                total += count_photos(old_photographer_photos)
+                merge_tree(photos, old_photographer_photos)
+                continue
+
+        photographer_photos: dict[str, Any] = {}
+        drive_entries: list[dict[str, Any]] = []
+
+        add_drive_folder(photographer_photos, photographer_key, folder_id, [], drive_entries)
+        count = count_photos(photographer_photos)
+
+        if count_entries(photographer_photos) == 0 and old_photographer_photos:
+            log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
+            photographer_photos = old_photographer_photos
+            count = count_photos(photographer_photos)
+        elif photographer_photos != old_photographer_photos:
+            write_json(photographer_file, photographer_photos)
+            log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
+        else:
+            log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+
+        if OAUTH_TOKEN:
+            try:
+                write_json(changes_file, build_changes_state(folder_id, drive_entries))
+            except RuntimeError as error:
+                log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
+
+        total += count
+        merge_tree(photos, photographer_photos)
+
+    write_json(PHOTOS_FILE, photos)
+    log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
+    log("Uppdatering klar.")
 
 if __name__ == "__main__":
     main()
