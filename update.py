@@ -30,7 +30,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT
 
-LOG_FILE_NAME = f"{datetime.now(timezone.utc).year}.log"
+LOG_FILE_NAME = f"{datetime.now().year}.log"
 LOG_FILE = ROOT / LOG_FILE_NAME
 
 
@@ -59,8 +59,8 @@ GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
 OAUTH_TOKEN = ""
 
 
-def log(message: str) -> None:
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
+    timestamp = datetime.now().strftime(format)
     line = f"{timestamp} {message}"
     print(line)
     with LOG_FILE.open("a", encoding="utf-8") as file:
@@ -147,11 +147,11 @@ def ensure_json_file(path: Path, data: Any) -> None:
 
 
 def log_step(message: str) -> None:
-    log(f" {message}")
+    log(f"{message}")
 
 
 def log_detail(message: str) -> None:
-    log(f"  {message}")
+    log(f" {message}")
 
 
 def start_log_section() -> None:
@@ -868,45 +868,17 @@ def count_entries(node: Any) -> int:
         return sum(count_entries(child) for child in node.values())
     return 0
 
-# from log_time
-# def main() -> None:
-#     started = time.perf_counter()
-#     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-#     duration = time.perf_counter() - started
-#     with LOG_FILE.open("a", encoding="utf-8") as log:
-#         log(f"{timestamp} duration={duration:.3f}s {z}\n")
-
-#     run_git("add", LOG_FILE_NAME)
-
-#     diff = run_git("diff", "--cached", "--quiet", check=False)
-#     if diff.returncode == 0:
-#         print("No log changes to commit")
-#         return
-
-#     if diff.returncode != 1:
-#         raise subprocess.CalledProcessError(
-#             diff.returncode,
-#             diff.args,
-#             output=diff.stdout,
-#             stderr=diff.stderr,
-#         )
-
-#     run_git("commit", "-m", "Log timestamp")
-#     run_git("push")
-#
-
 
 def main() -> None:
     global OAUTH_TOKEN
     start_log_section()
     started = time.perf_counter()
 
-    log("Startar uppdatering.")
+    log("Startar uppdatering.","%Y-%m-%d")
     OAUTH_TOKEN = load_oauth_token()
     if OAUTH_TOKEN:
-        log_step("OAuth används för Drive API och ändringskontroll.")
+        pass
+        # log_step("OAuth används för Drive API och ändringskontroll.")
     elif GOOGLE_DRIVE_API_KEY:
         log_step("Google Drive API används för katalogkontroll.")
     else:
@@ -931,7 +903,7 @@ def main() -> None:
                 log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
                 continue
 
-            log_step(f"Hämtar {photographer_key}.")
+            log_step(photographer_key)
             photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
             changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
             old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
@@ -940,7 +912,7 @@ def main() -> None:
             if OAUTH_TOKEN and old_photographer_photos and changes_state:
                 changed = photographer_has_drive_changes(changes_state)
                 if not changed:
-                    log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+                    # log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
                     ensure_json_file(photographer_file, old_photographer_photos)
                     write_json(changes_file, changes_state)
                     total += count_photos(old_photographer_photos)
@@ -978,7 +950,7 @@ def main() -> None:
             merge_tree(photos, photographer_photos)
             continue
 
-        log_step(f"Hämtar {photographer_key}.")
+        log_step(photographer_key)
         photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
         changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
         old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
@@ -990,7 +962,7 @@ def main() -> None:
                 changed = True
                 log_detail(f"Omgenererar {photographer_file.name} eftersom den innehåller okand.")
             if not changed:
-                log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+                # log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
                 ensure_json_file(photographer_file, old_photographer_photos)
                 write_json(changes_file, changes_state)
                 total += count_photos(old_photographer_photos)
@@ -1011,6 +983,7 @@ def main() -> None:
             write_json(photographer_file, photographer_photos)
             log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
         else:
+            pass
             log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
 
         if OAUTH_TOKEN:
@@ -1026,7 +999,7 @@ def main() -> None:
     log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
     
     duration = time.perf_counter() - started
-    log(f"Uppdatering klar. {duration:.3f} sekunder")
+    log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
 
     commit_and_push_updates()
 
