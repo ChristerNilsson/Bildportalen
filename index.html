@@ -1349,6 +1349,7 @@
         .replace(/60plus/gi, "60+")
         .replace(/\s+16x9\s+/gi, " ")
         .replace(/\.jpg$/i, "")
+        .replace(/\.jpeg$/i, "")
         .replace(/\b[ITFR]\d{5}\b/g, "")
         .replace(/\bC\d{7}\b/g, "")
         .replace(/\bV\d{9}\b/g, "")
@@ -1370,6 +1371,8 @@
 
     function driveFilePreviewUrl(fileId) {
       return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+      // return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}`; Ger /edit inbäddad i google-visaren
+      // return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`; Ger download
     }
 
     function googleUserContentUrl(photo, size = 640) {
