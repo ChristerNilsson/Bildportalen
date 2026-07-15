@@ -817,6 +817,28 @@ def merge_tree(target: dict[str, Any], source: dict[str, Any]) -> None:
             target[key] = value
 
 
+def file_paths(node: Any, path: list[str] | None = None) -> set[str]:
+    if path is None:
+        path = []
+    if isinstance(node, dict):
+        paths: set[str] = set()
+        for name, value in node.items():
+            paths.update(file_paths(value, [*path, name]))
+        return paths
+    if path:
+        return {"/".join(path)}
+    return set()
+
+
+def log_file_changes(old_tree: dict[str, Any], new_tree: dict[str, Any]) -> None:
+    old_paths = file_paths(old_tree)
+    new_paths = file_paths(new_tree)
+    for path in sorted(new_paths - old_paths, key=str.casefold):
+        log_detail(f"+ {path}")
+    for path in sorted(old_paths - new_paths, key=str.casefold):
+        log_detail(f"- {path}")
+
+
 def tree_parts(parts: list[str], root_folder_name: str | None = None) -> tuple[str, list[str]]:
     if parts:
         first = parts[0].strip()
@@ -937,6 +959,7 @@ def main() -> None:
             elif photographer_photos != old_photographer_photos:
                 write_json(photographer_file, photographer_photos)
                 log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
+                log_file_changes(old_photographer_photos, photographer_photos)
             else:
                 log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
 
@@ -982,6 +1005,7 @@ def main() -> None:
         elif photographer_photos != old_photographer_photos:
             write_json(photographer_file, photographer_photos)
             log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
+            log_file_changes(old_photographer_photos, photographer_photos)
         else:
             pass
             log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")

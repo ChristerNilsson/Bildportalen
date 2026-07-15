@@ -4,38 +4,32 @@ Den här filen beskriver vad en fotograf behöver veta för att bidra med bilder
 
 ## Google Drive
 
-Skapa en Google Drive-katalog för dina bilder och dela länken med administratören. Administratören lägger in länken i `photographers.json`.
+Skapa en Google Drive-katalog för dina bilder och dela länken med administratören. Administratören lägger in länken i `photographers.json`.  
+Se till att Utforskaren visar den som t ex `Google Drive (G:)`
 
 Katalogen kan innehålla år, turneringar och underkataloger. Exempel:
 
 ```text
-2026/
-  2026-01-10 Tjejträffen Stockholm I10765 T17724/
-    Diverse/
-      Vy-Tjejträffen_Agnes_Näslund_Ekroth_2026-01-10.jpg
+2026
+  2026-01-10 Tjejträffen Stockholm
+    Diverse
+      Agnes_Näslund_Ekroth.jpg
 ```
 
 ## Turneringsnamn
 
-Skriv gärna datum först i turneringskatalogens namn:
+Skriv alltid datum först i turneringskatalogens namn:
 
 ```text
-2026-01-10 Tjejträffen Stockholm I10765 T17724
+2026-01-10 Tjejträffen Stockholm
 ```
-
-Koder kan läggas sist i katalognamnet:
-
-- `T12345` länkar till Medlemssystemet.
-- `C1234567` länkar till Chess-Results.
-- `V123456789` länkar till Vimeo.
-- `I12345`, `F12345` och `R12345` visas inte som text.
 
 ## Filnamn
 
-Använd beskrivande filnamn. Datum i filnamnet är bra, särskilt om EXIF-tid saknas.
+Använd beskrivande filnamn.
 
 ```text
-Vy-Tjejträffen_Agnes_Näslund_Ekroth_2026-01-10.jpg
+Agnes_Näslund_Ekroth.jpg
 ```
 
 Underscore används ofta för att binda ihop namn eller uttryck. Exempel: `Bo_Ek` gör att man kan söka på exakt `Bo_Ek` och slipper träffar som `Bo Björk`.
@@ -56,6 +50,7 @@ En `.url`-fil ska ha länken på andra raden, till exempel:
 [InternetShortcut]
 URL=https://example.com/resultat
 ```
+Enklaste sättet att skapa en .url-fil är att dra in urlen från webläsaren till rätt katalogen i Utforskaren.
+Glöm inte byta namn på .url-filen. T ex Resultat, Inbjudan, Fakta eller annat lämpligt.
 
 Dessa visas som länkar i Bildportalen när användaren står i samma katalog.
-
