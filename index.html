@@ -1377,7 +1377,7 @@
 
     function googleUserContentUrl(photo, size = 640) {
       if (/^[A-Za-z0-9_-]{10,}$/.test(photo.key)) {
-        return `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.key)}=w${size}`;
+        return `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.key)}=s${size}`;
       }
       return "";
     }
