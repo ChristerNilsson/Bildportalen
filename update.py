@@ -5,7 +5,9 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
+import traceback
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,6 +34,8 @@ REPO_ROOT = ROOT
 
 LOG_FILE_NAME = f"{datetime.now().year}.log"
 LOG_FILE = ROOT / LOG_FILE_NAME
+LOCK_FILE = ROOT / "update.lock"
+LOCK_STALE_SECONDS = 2 * 60 * 60
 
 
 PHOTOGRAPHERS_FILE = ROOT / "photographers.json"
@@ -154,10 +158,49 @@ def log_detail(message: str) -> None:
     log(f" {message}")
 
 
+def log_traceback(error: BaseException) -> None:
+    for line in traceback.format_exception(type(error), error, error.__traceback__):
+        for row in line.rstrip().splitlines():
+            log_detail(row)
+
+
 def start_log_section() -> None:
     print()
     with LOG_FILE.open("a", encoding="utf-8") as file:
         file.write("\n")
+
+
+def acquire_update_lock() -> bool:
+    try:
+        lock_age = time.time() - LOCK_FILE.stat().st_mtime
+    except FileNotFoundError:
+        lock_age = 0
+    else:
+        if lock_age < LOCK_STALE_SECONDS:
+            lock_text = LOCK_FILE.read_text(encoding="utf-8", errors="replace").strip()
+            log(f"Avbryter: {LOCK_FILE.name} finns redan. En uppdatering verkar redan köra. {lock_text}")
+            return False
+        log(f"Tar bort gammal {LOCK_FILE.name} efter {lock_age / 60:.1f} minuter.")
+        LOCK_FILE.unlink()
+
+    try:
+        fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        log(f"Avbryter: {LOCK_FILE.name} skapades av en annan process.")
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        file.write(f"pid={os.getpid()} start={datetime.now().isoformat(timespec='seconds')}\n")
+    return True
+
+
+def release_update_lock() -> None:
+    try:
+        lock_text = LOCK_FILE.read_text(encoding="utf-8", errors="replace")
+        if not lock_text.startswith(f"pid={os.getpid()} "):
+            return
+        LOCK_FILE.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def load_oauth_token() -> str:
@@ -891,21 +934,24 @@ def count_entries(node: Any) -> int:
     return 0
 
 
-def main() -> None:
+def run_update() -> None:
     global OAUTH_TOKEN
-    start_log_section()
     started = time.perf_counter()
 
     log("Startar uppdatering.","%Y-%m-%d")
+    if not acquire_update_lock():
+        return
+
+    log_step("Laddar OAuth-token.")
     OAUTH_TOKEN = load_oauth_token()
     if OAUTH_TOKEN:
-        pass
-        # log_step("OAuth används för Drive API och ändringskontroll.")
+        log_step("OAuth används för Drive API och ändringskontroll.")
     elif GOOGLE_DRIVE_API_KEY:
         log_step("Google Drive API används för katalogkontroll.")
     else:
         log_step("GOOGLE_DRIVE_API_KEY saknas. Faller tillbaka till HTML-läsning.")
 
+    log_step(f"Läser {PHOTOGRAPHERS_FILE.name}.")
     photographers = read_json(PHOTOGRAPHERS_FILE, {})
     photos: dict[str, Any] = {}
     total = 0
@@ -1028,5 +1074,22 @@ def main() -> None:
     commit_and_push_updates()
 
 
+def main() -> int:
+    start_log_section()
+    try:
+        run_update()
+        return 0
+    except KeyboardInterrupt as error:
+        log(f"UPPDATERING AVBRUTEN: {type(error).__name__}")
+        log_traceback(error)
+        return 130
+    except BaseException as error:
+        log(f"UPPDATERING MISSLYCKADES: {type(error).__name__}: {error}")
+        log_traceback(error)
+        return 1
+    finally:
+        release_update_lock()
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
