@@ -674,3 +674,30 @@
 00:32:05 LOAH_0K
 00:32:06 Skapade photos.json med 66450 bilder.
 2026-07-17 Uppdatering klar. 6.542 sekunder
+
+2026-07-17 Startar uppdatering.
+01:31:59 Laddar OAuth-token.
+01:32:00 OAuth används för Drive API och ändringskontroll.
+01:32:00 Läser photographers.json.
+01:32:00 JCN
+01:32:00 VT
+01:32:00 LOAH_26
+01:32:01 LOAH_25
+01:32:01 LOAH_24
+01:32:01 LOAH_23
+01:32:01 LOAH_22
+01:32:02 LOAH_21
+01:32:02 LOAH_20
+01:32:02 LOAH_19
+01:32:02 LOAH_18
+01:32:03 LOAH_17
+01:32:03 LOAH_16
+01:32:03 LOAH_15
+01:32:04 LOAH_14
+01:32:04 LOAH_13
+01:32:04 LOAH_12
+01:32:04 LOAH_11
+01:32:05 HELP
+01:32:05 LOAH_0K
+01:32:05 Skapade photos.json med 66450 bilder.
+2026-07-17 Uppdatering klar. 6.046 sekunder
