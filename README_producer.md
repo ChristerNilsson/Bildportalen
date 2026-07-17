@@ -24,33 +24,29 @@ Skriv alltid datum först i turneringskatalogens namn:
 2026-01-10 Tjejträffen Stockholm
 ```
 
-## Filnamn
+## Bildnamn
 
-Använd beskrivande filnamn.
+Använd beskrivande namn på bilderna. Oftast personnamn. Koppla förnamn och efternamn med underscore.
 
 ```text
 Agnes_Näslund_Ekroth.jpg
 ```
 
-Underscore används ofta för att binda ihop namn eller uttryck. Exempel: `Bo_Ek` gör att man kan söka på exakt `Bo_Ek` och slipper träffar som `Bo Björk`.
+## Dokument
 
-Mellanslag passar bättre i vanliga katalogrubriker och turneringsnamn.
+Du kan lägga in dokument eller länkar till dokument i turneringskatalogen:
 
-## Extra länkar
+- `Inbjudan.pdf`
+- `Fakta.txt`
+- `Resultat.url`
 
-Du kan lägga in dokument eller länkar i en katalog:
-
-- `inbjudan.pdf`
-- `fakta.txt`
-- `resultat.url`
-
-En `.url`-fil ska ha länken på andra raden, till exempel:
+En `.url`-fil kan se ut så här:
 
 ```text
 [InternetShortcut]
 URL=https://example.com/resultat
 ```
-Enklaste sättet att skapa en .url-fil är att dra in urlen från webläsaren till rätt katalogen i Utforskaren.
-Glöm inte byta namn på .url-filen. T ex Resultat, Inbjudan, Fakta eller annat lämpligt.
+Enklaste sättet att skapa en .url-fil är att dra in urlen från webläsaren till rätt katalog i Utforskaren.  
+Glöm inte byta namn på .url-filen. T ex Resultat, Inbjudan, Fakta eller annat lämpligt.  
 
-Dessa visas som länkar i Bildportalen när användaren står i samma katalog.
+Dessa visas som länkar i Bildportalen när användaren står i samma katalog.  
