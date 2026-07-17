@@ -2382,3 +2382,35 @@
 12:32:12 Inget nytt för photos.json. Databasen innehåller 66450 bilder.
 12:32:12  Drive JSON: 1 anrop, 53 bytes (changes=1 anrop/53 bytes).
 2026-07-17 Uppdatering klar. 13.017 sekunder
+
+2026-07-17 Startar uppdatering.
+12:55:16 Laddar OAuth-token.
+12:55:16 OAuth används för Drive API och ändringskontroll.
+12:55:16 Läser photographers.json.
+12:55:16 JCN
+12:55:17  Uppdaterade databascache för JCN via Drive Changes.
+12:55:17 VT
+12:55:17  Uppdaterade databascache för VT via Drive Changes.
+12:55:17  + 2026/2026-06-27 Schack-SM Jönköping/Rad 1 • Rasmus Myklebust • Daniel Johansson • Emilio Gonzalez • Eric Nordin • Rad 2 • Johanna Lundström • Stefan Håkansson • Jón Úlfur Hafthórsson • Simon Lindström.jpg
+12:55:17  - 2026/2026-06-27 Schack-SM Jönköping/Funktionärsstaben under SM i Jönköping. Främre raden Rasmus Myklebust, Daniel Johansson, Emilio Gonzalez och Eric Nordin. Bakre raden Johanna Lundström.jpg
+12:55:17 LOAH_26
+12:55:17 LOAH_25
+12:55:17 LOAH_24
+12:55:17 LOAH_23
+12:55:17 LOAH_22
+12:55:17 LOAH_21
+12:55:17 LOAH_20
+12:55:17 LOAH_19
+12:55:17 LOAH_18
+12:55:17 LOAH_17
+12:55:17 LOAH_16
+12:55:17 LOAH_15
+12:55:17 LOAH_14
+12:55:17 LOAH_13
+12:55:17 LOAH_12
+12:55:17 LOAH_11
+12:55:17 HELP
+12:55:17 LOAH_0K
+12:55:17 Skapade photos.json med 66450 bilder.
+12:55:17  Drive JSON: 1 anrop, 3603 bytes (changes=1 anrop/3603 bytes).
+2026-07-17 Uppdatering klar. 1.371 sekunder
