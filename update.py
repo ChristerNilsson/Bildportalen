@@ -4,6 +4,7 @@ import html
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -41,6 +42,7 @@ LOCK_STALE_SECONDS = 2 * 60 * 60
 PHOTOGRAPHERS_FILE = ROOT / "photographers.json"
 PHOTOS_FILE = ROOT / "photos.json"
 PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
+DATABASE_FILE = ROOT / "bildportalen.sqlite"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
 OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -139,6 +141,16 @@ def read_json_with_legacy(path: Path, legacy_path: Path, default: Any) -> Any:
     return read_json(legacy_path, default)
 
 
+def json_dumps(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def json_loads(value: str, default: Any) -> Any:
+    if not value:
+        return default
+    return json.loads(value)
+
+
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -201,6 +213,111 @@ def release_update_lock() -> None:
         LOCK_FILE.unlink()
     except FileNotFoundError:
         pass
+
+
+def open_database() -> sqlite3.Connection:
+    connection = sqlite3.connect(DATABASE_FILE)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA synchronous=NORMAL")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS photographer_cache (
+            photographer_key TEXT PRIMARY KEY,
+            photos_json TEXT NOT NULL,
+            changes_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    return connection
+
+
+def migrate_legacy_photographer_files(connection: sqlite3.Connection, photographer_keys: set[str]) -> None:
+    if not PHOTOGRAPHER_DATA_DIR.exists():
+        return
+
+    migrated = 0
+    for photographer_key in sorted(photographer_keys, key=str.casefold):
+        exists = connection.execute(
+            "SELECT 1 FROM photographer_cache WHERE photographer_key = ?",
+            (photographer_key,),
+        ).fetchone()
+        if exists:
+            continue
+
+        photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
+        changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
+        if not photographer_file.exists():
+            continue
+
+        photographer_photos = read_json(photographer_file, {})
+        changes_state = read_json(changes_file, {}) if changes_file.exists() else {}
+        save_photographer_cache(connection, photographer_key, photographer_photos, changes_state)
+        migrated += 1
+
+    if migrated:
+        log_step(f"Migrerade {migrated} fotografcacher till {DATABASE_FILE.name}.")
+
+
+def get_photographer_cache(connection: sqlite3.Connection, photographer_key: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    row = connection.execute(
+        "SELECT photos_json, changes_json FROM photographer_cache WHERE photographer_key = ?",
+        (photographer_key,),
+    ).fetchone()
+    if row is None:
+        return {}, {}
+    return json_loads(row[0], {}), json_loads(row[1], {})
+
+
+def save_photographer_cache(
+    connection: sqlite3.Connection,
+    photographer_key: str,
+    photographer_photos: dict[str, Any],
+    changes_state: dict[str, Any],
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO photographer_cache (photographer_key, photos_json, changes_json, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(photographer_key) DO UPDATE SET
+            photos_json = excluded.photos_json,
+            changes_json = excluded.changes_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            photographer_key,
+            json_dumps(photographer_photos),
+            json_dumps(changes_state),
+            datetime.now().isoformat(timespec="seconds"),
+        ),
+    )
+    connection.commit()
+
+
+def delete_removed_photographer_caches(connection: sqlite3.Connection, photographer_keys: set[str]) -> list[dict[str, Any]]:
+    rows = connection.execute("SELECT photographer_key, photos_json FROM photographer_cache").fetchall()
+    removed_trees: list[dict[str, Any]] = []
+    for photographer_key, photos_json in rows:
+        if photographer_key in photographer_keys:
+            continue
+        removed_trees.append(json_loads(photos_json, {}))
+        connection.execute(
+            "DELETE FROM photographer_cache WHERE photographer_key = ?",
+            (photographer_key,),
+        )
+        log_detail(f"Tog bort cache för saknad fotograf {photographer_key}.")
+    if removed_trees:
+        connection.commit()
+    return removed_trees
 
 
 def load_oauth_token() -> str:
@@ -873,6 +990,54 @@ def file_paths(node: Any, path: list[str] | None = None) -> set[str]:
     return set()
 
 
+def remove_leaf_path(node: dict[str, Any], path: list[str]) -> None:
+    if not path:
+        return
+
+    parents: list[tuple[dict[str, Any], str]] = []
+    current: Any = node
+    for part in path[:-1]:
+        if not isinstance(current, dict) or part not in current:
+            return
+        parents.append((current, part))
+        current = current[part]
+
+    if not isinstance(current, dict):
+        return
+    current.pop(path[-1], None)
+
+    for parent, key in reversed(parents):
+        child = parent.get(key)
+        if isinstance(child, dict) and not child:
+            parent.pop(key, None)
+        else:
+            break
+
+
+def remove_tree(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for path in sorted(file_paths(source), key=lambda value: value.count("/"), reverse=True):
+        remove_leaf_path(target, path.split("/"))
+
+
+def build_photos_from_database(
+    connection: sqlite3.Connection,
+    photographer_keys: list[str],
+) -> dict[str, Any]:
+    photos: dict[str, Any] = {}
+    for photographer_key in photographer_keys:
+        photographer_photos, _changes_state = get_photographer_cache(connection, photographer_key)
+        merge_tree(photos, photographer_photos)
+    return photos
+
+
+def count_database_photos(connection: sqlite3.Connection, photographer_keys: list[str]) -> int:
+    total = 0
+    for photographer_key in photographer_keys:
+        photographer_photos, _changes_state = get_photographer_cache(connection, photographer_key)
+        total += count_photos(photographer_photos)
+    return total
+
+
 def log_file_changes(old_tree: dict[str, Any], new_tree: dict[str, Any]) -> None:
     old_paths = file_paths(old_tree)
     new_paths = file_paths(new_tree)
@@ -934,6 +1099,75 @@ def count_entries(node: Any) -> int:
     return 0
 
 
+def update_photographer_cache(
+    connection: sqlite3.Connection,
+    photographer_key: str,
+    photographer: list[Any],
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    if not isinstance(photographer, list) or len(photographer) < 2:
+        log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
+        return {}, {}, False
+
+    source_url = photographer[1]
+    folder_id = drive_folder_id_from_url(source_url)
+    file_id = drive_file_id_from_url(source_url)
+    if folder_id is None and file_id is None:
+        folder_id = drive_id_from_url(source_url)
+    if folder_id is None and file_id is None:
+        log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
+        return {}, {}, False
+
+    log_step(photographer_key)
+    old_photographer_photos, changes_state = get_photographer_cache(connection, photographer_key)
+
+    if OAUTH_TOKEN and old_photographer_photos and changes_state:
+        changed = photographer_has_drive_changes(changes_state)
+        if folder_id is not None and not changed and contains_okand(old_photographer_photos):
+            changed = True
+            log_detail(f"Omgenererar {photographer_key} eftersom cachen innehåller okand.")
+        if not changed:
+            save_photographer_cache(connection, photographer_key, old_photographer_photos, changes_state)
+            return old_photographer_photos, old_photographer_photos, False
+
+    photographer_photos: dict[str, Any] = {}
+    drive_entries: list[dict[str, Any]] = []
+
+    if folder_id is None:
+        assert file_id is not None
+        add_drive_file(
+            photographer_photos,
+            photographer_key,
+            file_id,
+            drive_entries,
+            fallback_name=drive_file_fallback_name(photographer_key, photographer),
+        )
+        cache_root_id = file_id
+    else:
+        add_drive_folder(photographer_photos, photographer_key, folder_id, [], drive_entries)
+        cache_root_id = folder_id
+
+    count = count_photos(photographer_photos)
+    if count_entries(photographer_photos) == 0 and old_photographer_photos:
+        log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder databascache.")
+        photographer_photos = old_photographer_photos
+        count = count_photos(photographer_photos)
+    elif photographer_photos != old_photographer_photos:
+        log_detail(f"Uppdaterade databascache för {photographer_key} med {count} bilder.")
+        log_file_changes(old_photographer_photos, photographer_photos)
+    else:
+        log_detail(f"Inget nytt för {photographer_key}. Databascache lämnas oförändrad.")
+
+    if OAUTH_TOKEN:
+        try:
+            changes_state = build_changes_state(cache_root_id, drive_entries)
+        except RuntimeError as error:
+            log_detail(f"Kunde inte uppdatera Drive change-state för {photographer_key}: {error}")
+
+    cache_changed = photographer_photos != old_photographer_photos
+    save_photographer_cache(connection, photographer_key, photographer_photos, changes_state)
+    return old_photographer_photos, photographer_photos, cache_changed
+
+
 def run_update() -> None:
     global OAUTH_TOKEN
     started = time.perf_counter()
@@ -953,125 +1187,45 @@ def run_update() -> None:
 
     log_step(f"Läser {PHOTOGRAPHERS_FILE.name}.")
     photographers = read_json(PHOTOGRAPHERS_FILE, {})
-    photos: dict[str, Any] = {}
-    total = 0
+    photographer_keys = list(photographers.keys())
+    photographer_key_set = set(photographer_keys)
 
-    for photographer_key, photographer in photographers.items():
-        if not isinstance(photographer, list) or len(photographer) < 2:
-            log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
-            continue
+    with open_database() as database:
+        migrate_legacy_photographer_files(database, photographer_key_set)
 
-        source_url = photographer[1]
-        folder_id = drive_folder_id_from_url(source_url)
-        file_id = drive_file_id_from_url(source_url)
-        if folder_id is None and file_id is None:
-            folder_id = drive_id_from_url(source_url)
-        if folder_id is None:
-            if file_id is None:
-                log(f"Hoppar över {photographer_key}: kan inte läsa Drive-id ur {source_url!r}.")
-                continue
+        photos = read_json(PHOTOS_FILE, {})
+        photos_changed = not bool(photos)
+        if not photos:
+            photos = build_photos_from_database(database, photographer_keys)
 
-            log_step(photographer_key)
-            photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
-            changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
-            old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
-            changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
+        for removed_tree in delete_removed_photographer_caches(database, photographer_key_set):
+            remove_tree(photos, removed_tree)
+            photos_changed = True
 
-            if OAUTH_TOKEN and old_photographer_photos and changes_state:
-                changed = photographer_has_drive_changes(changes_state)
-                if not changed:
-                    # log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-                    ensure_json_file(photographer_file, old_photographer_photos)
-                    write_json(changes_file, changes_state)
-                    total += count_photos(old_photographer_photos)
-                    merge_tree(photos, old_photographer_photos)
-                    continue
-
-            photographer_photos: dict[str, Any] = {}
-            drive_entries: list[dict[str, Any]] = []
-            add_drive_file(
-                photographer_photos,
+        for photographer_key, photographer in photographers.items():
+            old_photographer_photos, photographer_photos, cache_changed = update_photographer_cache(
+                database,
                 photographer_key,
-                file_id,
-                drive_entries,
-                fallback_name=drive_file_fallback_name(photographer_key, photographer),
+                photographer,
             )
-            count = count_photos(photographer_photos)
+            if cache_changed:
+                remove_tree(photos, old_photographer_photos)
+                merge_tree(photos, photographer_photos)
+                photos_changed = True
 
-            if count_entries(photographer_photos) == 0 and old_photographer_photos:
-                log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
-                photographer_photos = old_photographer_photos
-                count = count_photos(photographer_photos)
-            elif photographer_photos != old_photographer_photos:
-                write_json(photographer_file, photographer_photos)
-                log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
-                log_file_changes(old_photographer_photos, photographer_photos)
-            else:
-                log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
+        total = count_database_photos(database, photographer_keys)
 
-            if OAUTH_TOKEN:
-                try:
-                    write_json(changes_file, build_changes_state(file_id, drive_entries))
-                except RuntimeError as error:
-                    log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
+    if photos_changed:
+        write_json(PHOTOS_FILE, photos)
+        log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
+    else:
+        log_step(f"Inget nytt för {PHOTOS_FILE.name}. Databasen innehåller {total} bilder.")
 
-            total += count
-            merge_tree(photos, photographer_photos)
-            continue
-
-        log_step(photographer_key)
-        photographer_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.json"
-        changes_file = PHOTOGRAPHER_DATA_DIR / f"{photographer_key}.changes.json"
-        old_photographer_photos = read_json_with_legacy(photographer_file, ROOT / photographer_file.name, {})
-        changes_state = read_json_with_legacy(changes_file, ROOT / changes_file.name, {})
-
-        if OAUTH_TOKEN and old_photographer_photos and changes_state:
-            changed = photographer_has_drive_changes(changes_state)
-            if not changed and contains_okand(old_photographer_photos):
-                changed = True
-                log_detail(f"Omgenererar {photographer_file.name} eftersom den innehåller okand.")
-            if not changed:
-                # log_detail(f"Inga Drive-ändringar för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-                ensure_json_file(photographer_file, old_photographer_photos)
-                write_json(changes_file, changes_state)
-                total += count_photos(old_photographer_photos)
-                merge_tree(photos, old_photographer_photos)
-                continue
-
-        photographer_photos: dict[str, Any] = {}
-        drive_entries: list[dict[str, Any]] = []
-
-        add_drive_folder(photographer_photos, photographer_key, folder_id, [], drive_entries)
-        count = count_photos(photographer_photos)
-
-        if count_entries(photographer_photos) == 0 and old_photographer_photos:
-            log_detail(f"Inga Drive-poster hittades för {photographer_key}. Återanvänder {photographer_file.name}.")
-            photographer_photos = old_photographer_photos
-            count = count_photos(photographer_photos)
-        elif photographer_photos != old_photographer_photos:
-            write_json(photographer_file, photographer_photos)
-            log_detail(f"Skapade {photographer_file.name} med {count} bilder.")
-            log_file_changes(old_photographer_photos, photographer_photos)
-        else:
-            pass
-            log_detail(f"Inget nytt för {photographer_key}. {photographer_file.name} lämnas oförändrad.")
-
-        if OAUTH_TOKEN:
-            try:
-                write_json(changes_file, build_changes_state(folder_id, drive_entries))
-            except RuntimeError as error:
-                log_detail(f"Kunde inte skapa {changes_file.name}: {error}")
-
-        total += count
-        merge_tree(photos, photographer_photos)
-
-    write_json(PHOTOS_FILE, photos)
-    log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
-    
     duration = time.perf_counter() - started
     log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
 
     commit_and_push_updates()
+    return
 
 
 def main() -> int:

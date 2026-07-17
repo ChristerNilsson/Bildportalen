@@ -1,6 +1,8 @@
 credentials.json
 token.json
 photographers/
+bildportalen.sqlite
+bildportalen.sqlite-*
 update.log
 *.zip
 bilder.json
