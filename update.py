@@ -69,9 +69,11 @@ DRIVE_JSON_STATS: dict[str, dict[str, int]] = {}
 
 def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
     now = datetime.now()
-    ms = now.microsecond // 1000  # Konvertera mikrosekunder till millisekunder
-    timestamp = now.strftime("%H:%M:%S") + f".{ms:03d}"    
-    # timestamp = datetime.now().strftime(format)
+    if format == "%H:%M:%S":
+        ms = now.microsecond // 1000  # Konvertera mikrosekunder till millisekunder
+        timestamp = now.strftime("%H:%M:%S") + f".{ms:03d}"
+    else:
+        timestamp = now.strftime(format)
     line = f"{timestamp} {message}"
     print(line)
     with LOG_FILE.open("a", encoding="utf-8") as file:
@@ -2039,13 +2041,15 @@ def run_update() -> None:
         log_step(f"Inget nytt för {PHOTOS_FILE.name}. Databasen innehåller {total} bilder.")
 
     log_drive_json_stats()
+
+    commit_and_push_updates()
     duration = time.perf_counter() - started
     log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
 
-    started = time.perf_counter()
-    commit_and_push_updates()
-    duration = time.perf_counter() - started
-    log(f"commit and push. {duration:.3f} sekunder", "%Y-%m-%d")
+    # started = time.perf_counter()
+    # duration = time.perf_counter() - started
+    # log(f"commit and push. {duration:.3f} sekunder", "%Y-%m-%d")
+    
     return
 
 
