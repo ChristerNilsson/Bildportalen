@@ -63,6 +63,7 @@ GOOGLE_DRIVE_FOLDER = "application/vnd.google-apps.folder"
 USER_AGENT = "Mozilla/5.0 BildbankenForAll/1.0"
 GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
 OAUTH_TOKEN = ""
+DRIVE_JSON_STATS: dict[str, dict[str, int]] = {}
 
 
 def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
@@ -182,6 +183,46 @@ def log_step(message: str) -> None:
 
 def log_detail(message: str) -> None:
     log(f" {message}")
+
+
+def reset_drive_json_stats() -> None:
+    DRIVE_JSON_STATS.clear()
+
+
+def drive_json_stat_key(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path
+    if path.endswith("/changes") or "/changes" in path:
+        return "changes"
+    if path.endswith("/files"):
+        return "files-list"
+    if "/files/" in path:
+        query = parse_qs(parsed.query)
+        if query.get("alt") == ["media"]:
+            return "files-media"
+        return "files-metadata"
+    return path.rsplit("/", 1)[-1] or "drive-json"
+
+
+def record_drive_json_bytes(url: str, byte_count: int) -> None:
+    key = drive_json_stat_key(url)
+    stats = DRIVE_JSON_STATS.setdefault(key, {"calls": 0, "bytes": 0})
+    stats["calls"] += 1
+    stats["bytes"] += byte_count
+
+
+def log_drive_json_stats() -> None:
+    if not DRIVE_JSON_STATS:
+        log_detail("Drive JSON: 0 anrop, 0 bytes.")
+        return
+
+    total_calls = sum(stats["calls"] for stats in DRIVE_JSON_STATS.values())
+    total_bytes = sum(stats["bytes"] for stats in DRIVE_JSON_STATS.values())
+    parts = [
+        f"{key}={stats['calls']} anrop/{stats['bytes']} bytes"
+        for key, stats in sorted(DRIVE_JSON_STATS.items())
+    ]
+    log_detail(f"Drive JSON: {total_calls} anrop, {total_bytes} bytes ({'; '.join(parts)}).")
 
 
 def log_traceback(error: BaseException) -> None:
@@ -932,7 +973,9 @@ def fetch_drive_json(url: str) -> dict[str, Any]:
         if OAUTH_TOKEN:
             headers["Authorization"] = f"Bearer {OAUTH_TOKEN}"
         with urlopen(Request(url, headers=headers), timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
+            body = response.read()
+            record_drive_json_bytes(url, len(body))
+            return json.loads(body.decode("utf-8"))
     except HTTPError as error:
         try:
             detail = error.read().decode("utf-8", errors="replace")
@@ -1840,6 +1883,7 @@ def update_photographer_cache(
 def run_update() -> None:
     global OAUTH_TOKEN
     started = time.perf_counter()
+    reset_drive_json_stats()
 
     log("Startar uppdatering.","%Y-%m-%d")
     if not acquire_update_lock():
@@ -1903,6 +1947,7 @@ def run_update() -> None:
     else:
         log_step(f"Inget nytt för {PHOTOS_FILE.name}. Databasen innehåller {total} bilder.")
 
+    log_drive_json_stats()
     duration = time.perf_counter() - started
     log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
 
