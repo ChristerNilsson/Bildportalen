@@ -43,6 +43,7 @@ PHOTOGRAPHERS_FILE = ROOT / "photographers.json"
 PHOTOS_FILE = ROOT / "photos.json"
 PHOTOGRAPHER_DATA_DIR = ROOT / "photographers"
 DATABASE_FILE = ROOT / "bildportalen.sqlite"
+DATABASE_DOC_FILE = ROOT / "bildportalen_database.txt"
 OAUTH_CREDENTIALS_FILE = ROOT / "credentials.json"
 OAUTH_TOKEN_FILE = ROOT / "token.json"
 OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -319,6 +320,92 @@ def open_database() -> sqlite3.Connection:
     )
     connection.commit()
     return connection
+
+
+def write_database_documentation(connection: sqlite3.Connection) -> None:
+    lines = [
+        "Bildportalen databas",
+        "====================",
+        "",
+        f"Fil: {DATABASE_FILE.name}",
+        "Typ: SQLite, lokal cache för update.py.",
+        "",
+        "Syfte",
+        "-----",
+        "Databasen ersätter tidigare cachefiler i photographers/*.json och",
+        "photographers/*.changes.json. Den publika filen är fortfarande photos.json.",
+        "Databasen används för att undvika full omläsning av Google Drive när Drive",
+        "Changes API visar att inget har ändrats eller när en ändring kan patchas",
+        "inkrementellt.",
+        "",
+        "Tabeller",
+        "--------",
+    ]
+
+    table_rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+    ).fetchall()
+    for (table_name,) in table_rows:
+        lines.extend(["", table_name, "-" * len(table_name)])
+        columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        for _cid, name, column_type, notnull, default_value, primary_key in columns:
+            flags: list[str] = []
+            if primary_key:
+                flags.append("PRIMARY KEY")
+            if notnull:
+                flags.append("NOT NULL")
+            if default_value is not None:
+                flags.append(f"DEFAULT {default_value}")
+            suffix = f" ({', '.join(flags)})" if flags else ""
+            lines.append(f"- {name}: {column_type or 'ANY'}{suffix}")
+
+    lines.extend(
+        [
+            "",
+            "photographer_cache",
+            "------------------",
+            "- photographer_key: Nyckeln från photographers.json, t.ex. LOAH_26.",
+            "- photos_json: Fotografens deltrad i samma format som motsvarande del av photos.json.",
+            "- changes_json: Drive Changes-state med schemaVersion, pageToken och trackedIds.",
+            "- drive_entries_json: Index över Drive-objekt: id, name, mimeType, modifiedTime, takenTime och path.",
+            "- photo_count: Antal bilder for snabb totalsummering utan att parse:a photos_json.",
+            "- updated_at: Lokal tidpunkt när cacheposten senast skrevs.",
+            "",
+            "meta",
+            "----",
+            "Allmän nyckel/värde-tabell för framtida metadata. Den används inte aktivt i nuläget.",
+            "",
+            "Viktiga JSON-format",
+            "-------------------",
+            "changes_json:",
+            "  {",
+            "    \"schemaVersion\": 2,",
+            "    \"pageToken\": \"...\",",
+            "    \"trackedIds\": [\"drive-id\", \"...\"]",
+            "  }",
+            "",
+            "drive_entries_json:",
+            "  [",
+            "    {",
+            "      \"id\": \"drive-id\",",
+            "      \"name\": \"fil-eller-katalog\",",
+            "      \"mimeType\": \"image/jpeg\",",
+            "      \"modifiedTime\": \"2026-01-01T12:00:00.000Z\",",
+            "      \"takenTime\": 3970000000,",
+            "      \"path\": \"2026/Turnering/bild.jpg\"",
+            "    }",
+            "  ]",
+            "",
+            "Inkrementella uppdateringar",
+            "---------------------------",
+            "- Filnamnsändring, ny fil, filborttagning och katalognamnsändring kan patchas direkt.",
+            "- Osäkra fall, t.ex. flyttade kataloger eller okänd parent-kedja, faller tillbaka till full rescan.",
+            "- photos.json skrivs bara om när den publika strukturen faktiskt ändras.",
+            "",
+        ]
+    )
+
+    DATABASE_DOC_FILE.write_text("\n".join(lines), encoding="utf-8-sig")
 
 
 def migrate_legacy_photographer_files(connection: sqlite3.Connection, photographer_keys: set[str]) -> None:
@@ -1907,6 +1994,7 @@ def run_update() -> None:
     with open_database() as database:
         migrate_legacy_photographer_files(database, photographer_key_set)
         backfill_photo_counts(database)
+        write_database_documentation(database)
 
         photos: dict[str, Any] | None = None
         photos_changed = False

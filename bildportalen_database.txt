@@ -1,0 +1,70 @@
+﻿Bildportalen databas
+====================
+
+Fil: bildportalen.sqlite
+Typ: SQLite, lokal cache för update.py.
+
+Syfte
+-----
+Databasen ersätter tidigare cachefiler i photographers/*.json och
+photographers/*.changes.json. Den publika filen är fortfarande photos.json.
+Databasen används för att undvika full omläsning av Google Drive när Drive
+Changes API visar att inget har ändrats eller när en ändring kan patchas
+inkrementellt.
+
+Tabeller
+--------
+
+meta
+----
+- key: TEXT (PRIMARY KEY)
+- value: TEXT (NOT NULL)
+
+photographer_cache
+------------------
+- photographer_key: TEXT (PRIMARY KEY)
+- photos_json: TEXT (NOT NULL)
+- changes_json: TEXT (NOT NULL)
+- updated_at: TEXT (NOT NULL)
+- drive_entries_json: TEXT (NOT NULL, DEFAULT '[]')
+- photo_count: INTEGER (NOT NULL, DEFAULT 0)
+
+photographer_cache
+------------------
+- photographer_key: Nyckeln från photographers.json, t.ex. LOAH_26.
+- photos_json: Fotografens deltrad i samma format som motsvarande del av photos.json.
+- changes_json: Drive Changes-state med schemaVersion, pageToken och trackedIds.
+- drive_entries_json: Index över Drive-objekt: id, name, mimeType, modifiedTime, takenTime och path.
+- photo_count: Antal bilder for snabb totalsummering utan att parse:a photos_json.
+- updated_at: Lokal tidpunkt när cacheposten senast skrevs.
+
+meta
+----
+Allmän nyckel/värde-tabell för framtida metadata. Den används inte aktivt i nuläget.
+
+Viktiga JSON-format
+-------------------
+changes_json:
+  {
+    "schemaVersion": 2,
+    "pageToken": "...",
+    "trackedIds": ["drive-id", "..."]
+  }
+
+drive_entries_json:
+  [
+    {
+      "id": "drive-id",
+      "name": "fil-eller-katalog",
+      "mimeType": "image/jpeg",
+      "modifiedTime": "2026-01-01T12:00:00.000Z",
+      "takenTime": 3970000000,
+      "path": "2026/Turnering/bild.jpg"
+    }
+  ]
+
+Inkrementella uppdateringar
+---------------------------
+- Filnamnsändring, ny fil, filborttagning och katalognamnsändring kan patchas direkt.
+- Osäkra fall, t.ex. flyttade kataloger eller okänd parent-kedja, faller tillbaka till full rescan.
+- photos.json skrivs bara om när den publika strukturen faktiskt ändras.
