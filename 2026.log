@@ -1286,3 +1286,33 @@
 09:21:02 LOAH_0K
 09:21:02 Inget nytt för photos.json. Databasen innehåller 66450 bilder.
 2026-07-17 Uppdatering klar. 1.416 sekunder
+
+2026-07-17 Startar uppdatering.
+09:21:52 Laddar OAuth-token.
+09:21:52 OAuth används för Drive API och ändringskontroll.
+09:21:52 Läser photographers.json.
+09:21:52 JCN
+09:21:53 VT
+09:21:53 LOAH_26
+09:21:53 LOAH_25
+09:21:53 LOAH_24
+09:21:53 LOAH_23
+09:21:53 LOAH_22
+09:21:53 LOAH_21
+09:21:53 LOAH_20
+09:21:53  Uppdaterade databascache för LOAH_20 via Drive Changes.
+09:21:53  + 2020/2020-01-09 Pro Chess League Sweden Wasabis/France Roosters/631_Sweden_Wasabis-France_Roosters.jpg
+09:21:53  - 2020/2020-01-09 Pro Chess League Sweden Wasabis/France Roosters/631_Sweden_Wasabis-France_Roosters_xxx.jpg
+09:21:53 LOAH_19
+09:21:53 LOAH_18
+09:21:53 LOAH_17
+09:21:53 LOAH_16
+09:21:53 LOAH_15
+09:21:53 LOAH_14
+09:21:53 LOAH_13
+09:21:53 LOAH_12
+09:21:53 LOAH_11
+09:21:53 HELP
+09:21:53 LOAH_0K
+09:21:54 Skapade photos.json med 66450 bilder.
+2026-07-17 Uppdatering klar. 1.466 sekunder
