@@ -68,7 +68,10 @@ DRIVE_JSON_STATS: dict[str, dict[str, int]] = {}
 
 
 def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
-    timestamp = datetime.now().strftime(format)
+    now = datetime.now()
+    ms = now.microsecond // 1000  # Konvertera mikrosekunder till millisekunder
+    timestamp = now.strftime("%H:%M:%S") + f".{ms:03d}"    
+    # timestamp = datetime.now().strftime(format)
     line = f"{timestamp} {message}"
     print(line)
     with LOG_FILE.open("a", encoding="utf-8") as file:
