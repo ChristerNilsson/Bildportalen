@@ -2527,3 +2527,31 @@
 16:32:00 Inget nytt för photos.json. Databasen innehåller 66450 bilder.
 16:32:00  Drive JSON: 1 anrop, 53 bytes (changes=1 anrop/53 bytes).
 2026-07-17 Uppdatering klar. 1.045 sekunder
+
+2026-07-17 Startar uppdatering.
+17:31:58 Laddar OAuth-token.
+17:31:59 OAuth används för Drive API och ändringskontroll.
+17:31:59 Läser photographers.json.
+17:31:59 JCN
+17:31:59 VT
+17:31:59 LOAH_26
+17:31:59 LOAH_25
+17:31:59 LOAH_24
+17:31:59 LOAH_23
+17:31:59 LOAH_22
+17:31:59 LOAH_21
+17:31:59 LOAH_20
+17:31:59 LOAH_19
+17:31:59 LOAH_18
+17:31:59 LOAH_17
+17:31:59 LOAH_16
+17:31:59 LOAH_15
+17:31:59 LOAH_14
+17:31:59 LOAH_13
+17:31:59 LOAH_12
+17:31:59 LOAH_11
+17:31:59 HELP
+17:31:59 LOAH_0K
+17:31:59 Inget nytt för photos.json. Databasen innehåller 66450 bilder.
+17:31:59  Drive JSON: 1 anrop, 53 bytes (changes=1 anrop/53 bytes).
+2026-07-17 Uppdatering klar. 0.941 sekunder
