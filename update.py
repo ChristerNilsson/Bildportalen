@@ -2039,7 +2039,10 @@ def run_update() -> None:
     duration = time.perf_counter() - started
     log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
 
+    started = time.perf_counter()
     commit_and_push_updates()
+    duration = time.perf_counter() - started
+    log(f"commit and push. {duration:.3f} sekunder", "%Y-%m-%d")
     return
 
 
