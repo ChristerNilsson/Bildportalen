@@ -1836,3 +1836,30 @@
 09:38:38 LOAH_0K
 09:38:38 Skapade photos.json med 66450 bilder.
 2026-07-17 Uppdatering klar. 1.810 sekunder
+
+2026-07-17 Startar uppdatering.
+09:49:43 Laddar OAuth-token.
+09:49:43 OAuth används för Drive API och ändringskontroll.
+09:49:43 Läser photographers.json.
+09:49:43 JCN
+09:49:43 VT
+09:49:43 LOAH_26
+09:49:43 LOAH_25
+09:49:43 LOAH_24
+09:49:44 LOAH_23
+09:49:44 LOAH_22
+09:49:44 LOAH_21
+09:49:44 LOAH_20
+09:49:44 LOAH_19
+09:49:44 LOAH_18
+09:49:44 LOAH_17
+09:49:44 LOAH_16
+09:49:44 LOAH_15
+09:49:44 LOAH_14
+09:49:44 LOAH_13
+09:49:44 LOAH_12
+09:49:44 LOAH_11
+09:49:44 HELP
+09:49:44 LOAH_0K
+09:49:44 Inget nytt för photos.json. Databasen innehåller 66450 bilder.
+2026-07-17 Uppdatering klar. 1.035 sekunder
