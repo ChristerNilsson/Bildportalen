@@ -129,6 +129,20 @@ class DriveItem:
         return self.name.lower().endswith(".url")
 
 
+@dataclass(frozen=True)
+class DriveMetadata:
+    id: str
+    name: str
+    mime_type: str
+    modified_time: str = ""
+    taken_time: int = 0
+    parents: tuple[str, ...] = ()
+
+    @property
+    def is_folder(self) -> bool:
+        return self.mime_type == GOOGLE_DRIVE_FOLDER
+
+
 def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
@@ -225,10 +239,35 @@ def open_database() -> sqlite3.Connection:
             photographer_key TEXT PRIMARY KEY,
             photos_json TEXT NOT NULL,
             changes_json TEXT NOT NULL,
+            drive_entries_json TEXT NOT NULL DEFAULT '[]',
+            photo_count INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL
         )
         """
     )
+    columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(photographer_cache)").fetchall()
+    }
+    if "drive_entries_json" not in columns:
+        connection.execute(
+            "ALTER TABLE photographer_cache ADD COLUMN drive_entries_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    if "photo_count" not in columns:
+        connection.execute(
+            "ALTER TABLE photographer_cache ADD COLUMN photo_count INTEGER NOT NULL DEFAULT 0"
+        )
+        connection.execute(
+            """
+            UPDATE photographer_cache
+            SET photo_count = (
+                CASE
+                    WHEN photos_json = '' THEN 0
+                    ELSE photo_count
+                END
+            )
+            """
+        )
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS meta (
@@ -261,21 +300,55 @@ def migrate_legacy_photographer_files(connection: sqlite3.Connection, photograph
 
         photographer_photos = read_json(photographer_file, {})
         changes_state = read_json(changes_file, {}) if changes_file.exists() else {}
-        save_photographer_cache(connection, photographer_key, photographer_photos, changes_state)
+        save_photographer_cache(connection, photographer_key, photographer_photos, changes_state, [])
         migrated += 1
 
     if migrated:
         log_step(f"Migrerade {migrated} fotografcacher till {DATABASE_FILE.name}.")
 
 
-def get_photographer_cache(connection: sqlite3.Connection, photographer_key: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def get_photographer_cache(
+    connection: sqlite3.Connection,
+    photographer_key: str,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     row = connection.execute(
-        "SELECT photos_json, changes_json FROM photographer_cache WHERE photographer_key = ?",
+        "SELECT photos_json, changes_json, drive_entries_json FROM photographer_cache WHERE photographer_key = ?",
         (photographer_key,),
     ).fetchone()
     if row is None:
-        return {}, {}
-    return json_loads(row[0], {}), json_loads(row[1], {})
+        return {}, {}, []
+    photos = json_loads(row[0], {})
+    changes_state = json_loads(row[1], {})
+    drive_entries = json_loads(row[2], [])
+    if photos and not drive_entries:
+        drive_entries = drive_entries_from_photos(photos)
+    return photos, changes_state, drive_entries
+
+
+def has_saved_drive_entries(connection: sqlite3.Connection, photographer_key: str) -> bool:
+    row = connection.execute(
+        "SELECT length(drive_entries_json) FROM photographer_cache WHERE photographer_key = ?",
+        (photographer_key,),
+    ).fetchone()
+    return bool(row and row[0] and row[0] > 2)
+
+
+def backfill_photo_counts(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        "SELECT photographer_key, photos_json FROM photographer_cache WHERE photo_count = 0"
+    ).fetchall()
+    changed = False
+    for photographer_key, photos_json in rows:
+        photos = json_loads(photos_json, {})
+        photo_count = count_photos(photos)
+        if photo_count:
+            connection.execute(
+                "UPDATE photographer_cache SET photo_count = ? WHERE photographer_key = ?",
+                (photo_count, photographer_key),
+            )
+            changed = True
+    if changed:
+        connection.commit()
 
 
 def save_photographer_cache(
@@ -283,24 +356,109 @@ def save_photographer_cache(
     photographer_key: str,
     photographer_photos: dict[str, Any],
     changes_state: dict[str, Any],
+    drive_entries: list[dict[str, Any]],
 ) -> None:
     connection.execute(
         """
-        INSERT INTO photographer_cache (photographer_key, photos_json, changes_json, updated_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO photographer_cache (photographer_key, photos_json, changes_json, drive_entries_json, photo_count, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(photographer_key) DO UPDATE SET
             photos_json = excluded.photos_json,
             changes_json = excluded.changes_json,
+            drive_entries_json = excluded.drive_entries_json,
+            photo_count = excluded.photo_count,
             updated_at = excluded.updated_at
         """,
         (
             photographer_key,
             json_dumps(photographer_photos),
             json_dumps(changes_state),
+            json_dumps(drive_entries),
+            count_photos(photographer_photos),
             datetime.now().isoformat(timespec="seconds"),
         ),
     )
     connection.commit()
+
+
+def update_photographer_change_cache(
+    connection: sqlite3.Connection,
+    photographer_key: str,
+    changes_state: dict[str, Any],
+    drive_entries: list[dict[str, Any]] | None = None,
+) -> None:
+    if drive_entries is None:
+        connection.execute(
+            """
+            UPDATE photographer_cache
+            SET changes_json = ?, updated_at = ?
+            WHERE photographer_key = ?
+            """,
+            (
+                json_dumps(changes_state),
+                datetime.now().isoformat(timespec="seconds"),
+                photographer_key,
+            ),
+        )
+    else:
+        connection.execute(
+            """
+            UPDATE photographer_cache
+            SET changes_json = ?, drive_entries_json = ?, updated_at = ?
+            WHERE photographer_key = ?
+            """,
+            (
+                json_dumps(changes_state),
+                json_dumps(drive_entries),
+                datetime.now().isoformat(timespec="seconds"),
+                photographer_key,
+            ),
+        )
+    connection.commit()
+
+
+def drive_entries_from_photos(node: Any, path: list[str] | None = None) -> list[dict[str, Any]]:
+    if path is None:
+        path = []
+    if isinstance(node, dict):
+        entries: list[dict[str, Any]] = []
+        for name, value in node.items():
+            entries.extend(drive_entries_from_photos(value, [*path, name]))
+        return entries
+    if not path:
+        return []
+
+    name = path[-1]
+    item_path = "/".join(path)
+    if isinstance(node, list) and len(node) >= 3:
+        return [
+            {
+                "id": node[0],
+                "name": name,
+                "mimeType": "image/jpeg",
+                "modifiedTime": "",
+                "takenTime": node[2],
+                "path": item_path,
+            }
+        ]
+    if isinstance(node, str):
+        if name.lower().endswith(".pdf"):
+            mime_type = PDF_MIME_TYPE
+        elif name.lower().endswith(".txt"):
+            mime_type = "text/plain"
+        else:
+            mime_type = "application/octet-stream"
+        return [
+            {
+                "id": node,
+                "name": name,
+                "mimeType": mime_type,
+                "modifiedTime": "",
+                "takenTime": 0,
+                "path": item_path,
+            }
+        ]
+    return []
 
 
 def delete_removed_photographer_caches(connection: sqlite3.Connection, photographer_keys: set[str]) -> list[dict[str, Any]]:
@@ -395,7 +553,19 @@ def drive_file_fallback_name(photographer_key: str, photographer: list[Any]) -> 
     return ""
 
 
-def photographer_has_drive_changes(changes_state: dict[str, Any]) -> bool:
+def cached_drive_changes(
+    page_token: str,
+    changes_cache: dict[str, tuple[list[dict[str, Any]], str]],
+) -> tuple[list[dict[str, Any]], str]:
+    if page_token not in changes_cache:
+        changes_cache[page_token] = list_drive_changes(page_token)
+    return changes_cache[page_token]
+
+
+def photographer_has_drive_changes(
+    changes_state: dict[str, Any],
+    changes_cache: dict[str, tuple[list[dict[str, Any]], str]],
+) -> bool:
     if changes_state.get("schemaVersion") != OUTPUT_SCHEMA_VERSION:
         return True
 
@@ -408,7 +578,7 @@ def photographer_has_drive_changes(changes_state: dict[str, Any]) -> bool:
         return True
 
     try:
-        changes, new_page_token = list_drive_changes(page_token)
+        changes, new_page_token = cached_drive_changes(page_token, changes_cache)
     except RuntimeError as error:
         log(f"Drive Changes API misslyckades: {error}. Gör full kontroll.")
         return True
@@ -433,7 +603,7 @@ def list_drive_changes(page_token: str) -> tuple[list[dict[str, Any]], str]:
     while True:
         query = {
             "pageToken": token,
-            "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,modifiedTime,parents,trashed))",
+            "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,modifiedTime,parents,trashed,imageMediaMetadata(time)))",
             "pageSize": "1000",
             "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true",
@@ -535,6 +705,36 @@ def get_drive_file_item(file_id: str, fallback_name: str = "") -> DriveItem:
     raise RuntimeError("kunde inte läsa filmetadata.")
 
 
+def get_drive_metadata(file_id: str) -> DriveMetadata:
+    query = {
+        "fields": "id,name,mimeType,modifiedTime,parents,imageMediaMetadata(time)",
+        "supportsAllDrives": "true",
+    }
+    if not OAUTH_TOKEN:
+        query["key"] = GOOGLE_DRIVE_API_KEY
+    data = fetch_drive_json(f"https://www.googleapis.com/drive/v3/files/{file_id}?" + urlencode(query))
+    item_id = data.get("id", file_id)
+    name = repair_text(data.get("name", ""))
+    mime_type = data.get("mimeType", "")
+    modified_time = data.get("modifiedTime", "")
+    image_time = (data.get("imageMediaMetadata") or {}).get("time", "")
+    taken_time = drive_image_taken_time(image_time, modified_time)
+    parents = tuple(data.get("parents", []))
+    if not item_id or not name or not mime_type:
+        raise RuntimeError(f"kunde inte läsa Drive-metadata för {file_id}.")
+    return DriveMetadata(item_id, name, mime_type, modified_time, taken_time, parents)
+
+
+def drive_item_from_metadata(metadata: DriveMetadata) -> DriveItem:
+    return DriveItem(
+        metadata.id,
+        metadata.name,
+        metadata.mime_type,
+        metadata.modified_time,
+        metadata.taken_time,
+    )
+
+
 def add_drive_folder(
     photos: dict[str, Any],
     photographer_key: str,
@@ -552,6 +752,16 @@ def add_drive_folder(
 
     if root_folder_name is None and not path:
         root_folder_name = get_drive_folder_name(folder_id)
+        drive_entries.append(
+            {
+                "id": folder_id,
+                "name": root_folder_name,
+                "mimeType": GOOGLE_DRIVE_FOLDER,
+                "modifiedTime": "",
+                "takenTime": 0,
+                "path": "",
+            }
+        )
 
     try:
         items = list_drive_folder(folder_id)
@@ -1019,23 +1229,429 @@ def remove_tree(target: dict[str, Any], source: dict[str, Any]) -> None:
         remove_leaf_path(target, path.split("/"))
 
 
+def set_leaf_path(node: dict[str, Any], path: list[str], value: Any) -> None:
+    if not path:
+        return
+    current = node
+    for part in path[:-1]:
+        child = current.setdefault(part, {})
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[path[-1]] = value
+
+
+def get_leaf_path(node: Any, path: list[str]) -> Any:
+    current = node
+    for part in path:
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def find_leaf_path_by_drive_id(node: Any, drive_id: str, path: list[str] | None = None) -> list[str] | None:
+    if path is None:
+        path = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            found = find_leaf_path_by_drive_id(value, drive_id, [*path, key])
+            if found is not None:
+                return found
+        return None
+    if isinstance(node, list) and node and node[0] == drive_id:
+        return path
+    if isinstance(node, str) and node == drive_id:
+        return path
+    return None
+
+
+def photo_leaf_name(item_name: str, item_mime_type: str) -> str:
+    if item_name.lower().endswith(".url"):
+        return re.sub(r"\.url$", "", item_name, flags=re.IGNORECASE)
+    return item_name
+
+
+def drive_item_value(photographer_key: str, item: DriveItem) -> Any:
+    if item.is_url_file:
+        return read_url_file(item.id)
+    if item.is_link_file:
+        return item.id
+    if item.is_image:
+        return [item.id, photographer_key, item.taken_time]
+    raise RuntimeError(f"filtypen {item.mime_type!r} stöds inte.")
+
+
+def drive_item_from_change(file_id: str, file_data: dict[str, Any], old_entry: dict[str, Any]) -> DriveItem:
+    name = repair_text(file_data.get("name", "")) or old_entry.get("name", "")
+    mime_type = file_data.get("mimeType", "") or old_entry.get("mimeType", "")
+    modified_time = file_data.get("modifiedTime", "") or old_entry.get("modifiedTime", "")
+    image_time = (file_data.get("imageMediaMetadata") or {}).get("time", "")
+    taken_time = drive_image_taken_time(image_time, modified_time)
+    if not taken_time:
+        taken_time = int(old_entry.get("takenTime", 0) or 0)
+    return DriveItem(file_id, name, mime_type, modified_time, taken_time)
+
+
+def photos_path_from_drive_path(drive_path: str, item: DriveItem, root_folder_name: str = "") -> list[str]:
+    parts = [part for part in drive_path.split("/") if part]
+    if parts:
+        parts[-1] = photo_leaf_name(item.name, item.mime_type)
+    else:
+        parts = [photo_leaf_name(item.name, item.mime_type)]
+    year, tree_path = tree_parts(parts, root_folder_name or None)
+    return [year, *tree_path]
+
+
+def drive_entry_for_item(item: DriveItem, drive_path: str) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "mimeType": item.mime_type,
+        "modifiedTime": item.modified_time,
+        "takenTime": item.taken_time,
+        "path": drive_path,
+    }
+
+
+def drive_entry_for_folder(metadata: DriveMetadata, drive_path: str) -> dict[str, Any]:
+    return {
+        "id": metadata.id,
+        "name": metadata.name,
+        "mimeType": metadata.mime_type,
+        "modifiedTime": metadata.modified_time,
+        "takenTime": 0,
+        "path": drive_path,
+    }
+
+
+def is_drive_path_descendant(path: str, folder_path: str) -> bool:
+    return bool(folder_path) and path.startswith(folder_path + "/")
+
+
+def apply_folder_rename(
+    photos: dict[str, Any],
+    entry_by_id: dict[str, dict[str, Any]],
+    folder_entry: dict[str, Any],
+    new_name: str,
+    modified_time: str,
+    root_folder_name: str,
+) -> tuple[bool, str, str]:
+    old_folder_path = folder_entry.get("path", "")
+    if not old_folder_path:
+        return False, "", ""
+
+    parent_path = old_folder_path.rsplit("/", 1)[0] if "/" in old_folder_path else ""
+    new_folder_path = "/".join(part for part in (parent_path, new_name) if part)
+    if new_folder_path == old_folder_path:
+        folder_entry["name"] = new_name
+        folder_entry["modifiedTime"] = modified_time
+        return True, old_folder_path, new_folder_path
+
+    descendants = [
+        entry
+        for entry in entry_by_id.values()
+        if is_drive_path_descendant(entry.get("path", ""), old_folder_path)
+    ]
+    if not descendants:
+        folder_entry.update({"name": new_name, "modifiedTime": modified_time, "path": new_folder_path})
+        return True, old_folder_path, new_folder_path
+
+    moves: list[tuple[list[str], list[str], Any, dict[str, Any], str]] = []
+    for entry in descendants:
+        old_drive_path = entry.get("path", "")
+        new_drive_path = new_folder_path + old_drive_path[len(old_folder_path):]
+        item = DriveItem(
+            entry.get("id", ""),
+            entry.get("name", ""),
+            entry.get("mimeType", ""),
+            entry.get("modifiedTime", ""),
+            int(entry.get("takenTime", 0) or 0),
+        )
+        if item.is_folder:
+            continue
+
+        old_photos_path = photos_path_from_drive_path(old_drive_path, item, root_folder_name)
+        value = get_leaf_path(photos, old_photos_path)
+        if value is None:
+            found_path = find_leaf_path_by_drive_id(photos, item.id)
+            if found_path is None:
+                return False, "", ""
+            old_photos_path = found_path
+            value = get_leaf_path(photos, old_photos_path)
+        new_photos_path = photos_path_from_drive_path(new_drive_path, item, root_folder_name)
+        moves.append((old_photos_path, new_photos_path, value, entry, new_drive_path))
+
+    for old_photos_path, _new_photos_path, _value, _entry, _new_drive_path in moves:
+        remove_leaf_path(photos, old_photos_path)
+    for _old_photos_path, new_photos_path, value, entry, new_drive_path in moves:
+        set_leaf_path(photos, new_photos_path, value)
+        entry["path"] = new_drive_path
+
+    for entry in descendants:
+        if entry.get("mimeType") == GOOGLE_DRIVE_FOLDER:
+            old_drive_path = entry.get("path", "")
+            if is_drive_path_descendant(old_drive_path, old_folder_path):
+                entry["path"] = new_folder_path + old_drive_path[len(old_folder_path):]
+
+    folder_entry.update({"name": new_name, "modifiedTime": modified_time, "path": new_folder_path})
+    return True, old_folder_path, new_folder_path
+
+
+def resolve_parent_entry(
+    parent_id: str,
+    entry_by_id: dict[str, dict[str, Any]],
+    tracked_ids: set[str],
+) -> dict[str, Any] | None:
+    if parent_id in entry_by_id:
+        return entry_by_id[parent_id]
+
+    chain: list[DriveMetadata] = []
+    current_id = parent_id
+    seen: set[str] = set()
+    while current_id and current_id not in seen:
+        seen.add(current_id)
+        metadata = get_drive_metadata(current_id)
+        if not metadata.is_folder:
+            return None
+        chain.append(metadata)
+
+        known_parent = next((parent for parent in metadata.parents if parent in entry_by_id), "")
+        if known_parent:
+            parent_entry = entry_by_id[known_parent]
+            parent_path = parent_entry.get("path", "")
+            for folder_metadata in reversed(chain):
+                folder_path = "/".join(part for part in (parent_path, folder_metadata.name) if part)
+                entry = drive_entry_for_folder(folder_metadata, folder_path)
+                entry_by_id[folder_metadata.id] = entry
+                tracked_ids.add(folder_metadata.id)
+                parent_path = folder_path
+            return entry_by_id[parent_id]
+
+        root_parent = next((parent for parent in metadata.parents if parent in tracked_ids), "")
+        if root_parent:
+            parent_path = ""
+            for folder_metadata in reversed(chain):
+                folder_path = "/".join(part for part in (parent_path, folder_metadata.name) if part)
+                entry = drive_entry_for_folder(folder_metadata, folder_path)
+                entry_by_id[folder_metadata.id] = entry
+                tracked_ids.add(folder_metadata.id)
+                parent_path = folder_path
+            return entry_by_id[parent_id]
+
+        if len(metadata.parents) != 1:
+            return None
+        current_id = metadata.parents[0]
+
+    return None
+
+
+def relevant_drive_changes(changes: list[dict[str, Any]], tracked_ids: set[str]) -> list[dict[str, Any]]:
+    relevant_ids = set(tracked_ids)
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+
+    changed = True
+    while changed:
+        changed = False
+        for change in changes:
+            file_id = change.get("fileId", "")
+            if file_id in selected_ids:
+                continue
+            file_data = change.get("file") or {}
+            parents = set(file_data.get("parents", []))
+            if file_id in relevant_ids or parents.intersection(relevant_ids):
+                selected.append(change)
+                selected_ids.add(file_id)
+                relevant_ids.add(file_id)
+                changed = True
+
+    return selected
+
+
+def apply_drive_changes_incremental(
+    photographer_key: str,
+    old_photographer_photos: dict[str, Any],
+    changes_state: dict[str, Any],
+    drive_entries: list[dict[str, Any]],
+    changes_cache: dict[str, tuple[list[dict[str, Any]], str]],
+) -> tuple[bool, dict[str, Any], dict[str, Any], list[dict[str, Any]], bool, list[str]]:
+    if changes_state.get("schemaVersion") != OUTPUT_SCHEMA_VERSION:
+        return False, old_photographer_photos, changes_state, drive_entries, False, []
+    page_token = changes_state.get("pageToken", "")
+    if not page_token or not drive_entries:
+        return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+    try:
+        changes, new_page_token = cached_drive_changes(page_token, changes_cache)
+    except RuntimeError as error:
+        log(f"Drive Changes API misslyckades: {error}. Gör full kontroll.")
+        return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+    tracked_ids = set(changes_state.get("trackedIds", []))
+    filtered_changes = relevant_drive_changes(changes, tracked_ids)
+    if not filtered_changes:
+        new_changes_state = dict(changes_state)
+        if new_page_token and new_page_token != page_token:
+            new_changes_state["pageToken"] = new_page_token
+        return True, old_photographer_photos, new_changes_state, drive_entries, False, []
+
+    folder_mime = GOOGLE_DRIVE_FOLDER
+    ordered_changes = sorted(
+        filtered_changes,
+        key=lambda change: (0 if (change.get("file") or {}).get("mimeType") == folder_mime else 1),
+    )
+
+    new_photos = json_loads(json_dumps(old_photographer_photos), {})
+    new_entries = json_loads(json_dumps(drive_entries), [])
+    new_entry_by_id = {entry.get("id", ""): entry for entry in new_entries if entry.get("id")}
+    new_tracked_ids = set(tracked_ids)
+    root_entries = [entry for entry in new_entries if entry.get("path", "") == "" and entry.get("mimeType") == GOOGLE_DRIVE_FOLDER]
+    root_folder_name = root_entries[0].get("name", "") if root_entries else ""
+    changed = False
+    change_log: list[str] = []
+
+    for change in ordered_changes:
+        file_id = change.get("fileId", "")
+        file_data = change.get("file") or {}
+        old_entry = new_entry_by_id.get(file_id)
+        if old_entry is None:
+            if change.get("removed") or file_data.get("trashed"):
+                continue
+
+            parent_ids = list(file_data.get("parents", []))
+            if len(parent_ids) != 1:
+                if file_id in new_tracked_ids:
+                    return False, old_photographer_photos, changes_state, drive_entries, False, []
+                continue
+            if parent_ids[0] not in new_tracked_ids and parent_ids[0] not in new_entry_by_id:
+                continue
+            parent_entry = resolve_parent_entry(parent_ids[0], new_entry_by_id, new_tracked_ids)
+            if parent_entry is None:
+                if file_id in new_tracked_ids or parent_ids[0] in new_tracked_ids:
+                    return False, old_photographer_photos, changes_state, drive_entries, False, []
+                continue
+            if parent_entry.get("mimeType") != GOOGLE_DRIVE_FOLDER:
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+            item = drive_item_from_change(file_id, file_data, {})
+            if item.is_folder:
+                folder_path = "/".join(part for part in (parent_entry.get("path", ""), item.name) if part)
+                folder_metadata = DriveMetadata(
+                    item.id,
+                    item.name,
+                    item.mime_type,
+                    item.modified_time,
+                    item.taken_time,
+                    tuple(parent_ids),
+                )
+                new_entry_by_id[file_id] = drive_entry_for_folder(folder_metadata, folder_path)
+                new_tracked_ids.add(file_id)
+                changed = True
+                continue
+            if not (item.is_image or item.is_link_file or item.is_url_file):
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+            parent_path = parent_entry.get("path", "")
+            drive_path = "/".join(part for part in (parent_path, item.name) if part)
+            photos_path = photos_path_from_drive_path(drive_path, item, root_folder_name)
+            value = drive_item_value(photographer_key, item)
+            set_leaf_path(new_photos, photos_path, value)
+            new_entry = drive_entry_for_item(item, drive_path)
+            new_entry_by_id[file_id] = new_entry
+            new_tracked_ids.add(file_id)
+            changed = True
+            continue
+
+        if old_entry.get("mimeType") == GOOGLE_DRIVE_FOLDER:
+            if change.get("removed") or file_data.get("trashed"):
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+            parent_ids = list(file_data.get("parents", []))
+            if len(parent_ids) != 1:
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+            parent_entry = resolve_parent_entry(parent_ids[0], new_entry_by_id, new_tracked_ids)
+            if parent_entry is None:
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+            old_folder_path = old_entry.get("path", "")
+            old_parent_path = old_folder_path.rsplit("/", 1)[0] if "/" in old_folder_path else ""
+            if parent_entry.get("path", "") != old_parent_path:
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+            new_name = repair_text(file_data.get("name", "")) or old_entry.get("name", "")
+            modified_time = file_data.get("modifiedTime", "") or old_entry.get("modifiedTime", "")
+            folder_renamed, old_folder_path, new_folder_path = apply_folder_rename(
+                new_photos,
+                new_entry_by_id,
+                old_entry,
+                new_name,
+                modified_time,
+                root_folder_name,
+            )
+            if not folder_renamed:
+                return False, old_photographer_photos, changes_state, drive_entries, False, []
+            if old_folder_path != new_folder_path:
+                change_log.append(f"~ {old_folder_path} -> {new_folder_path}")
+            changed = True
+            continue
+
+        old_leaf_path = find_leaf_path_by_drive_id(new_photos, file_id)
+        if old_leaf_path is None:
+            return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+        if change.get("removed") or file_data.get("trashed"):
+            remove_leaf_path(new_photos, old_leaf_path)
+            new_entries = [entry for entry in new_entries if entry.get("id") != file_id]
+            new_entry_by_id.pop(file_id, None)
+            new_tracked_ids.discard(file_id)
+            changed = True
+            continue
+
+        item = drive_item_from_change(file_id, file_data, old_entry)
+        if item.is_folder:
+            return False, old_photographer_photos, changes_state, drive_entries, False, []
+        if not (item.is_image or item.is_link_file or item.is_url_file):
+            return False, old_photographer_photos, changes_state, drive_entries, False, []
+
+        old_drive_path = old_entry.get("path", item.name)
+        drive_parent_path = old_drive_path.rsplit("/", 1)[0] if "/" in old_drive_path else ""
+        new_drive_path = "/".join(part for part in (drive_parent_path, item.name) if part)
+        new_leaf_path = photos_path_from_drive_path(new_drive_path, item, root_folder_name)
+        value = drive_item_value(photographer_key, item)
+
+        remove_leaf_path(new_photos, old_leaf_path)
+        set_leaf_path(new_photos, new_leaf_path, value)
+        old_entry.update(drive_entry_for_item(item, new_drive_path))
+        changed = True
+
+    new_changes_state = dict(changes_state)
+    new_changes_state["pageToken"] = new_page_token or page_token
+    new_changes_state["trackedIds"] = sorted(new_tracked_ids)
+    new_entries = sorted(new_entry_by_id.values(), key=lambda entry: (entry.get("path", ""), entry.get("id", "")))
+    return True, new_photos, new_changes_state, new_entries, changed, change_log
+
+
 def build_photos_from_database(
     connection: sqlite3.Connection,
     photographer_keys: list[str],
 ) -> dict[str, Any]:
     photos: dict[str, Any] = {}
     for photographer_key in photographer_keys:
-        photographer_photos, _changes_state = get_photographer_cache(connection, photographer_key)
+        photographer_photos, _changes_state, _drive_entries = get_photographer_cache(connection, photographer_key)
         merge_tree(photos, photographer_photos)
     return photos
 
 
 def count_database_photos(connection: sqlite3.Connection, photographer_keys: list[str]) -> int:
-    total = 0
-    for photographer_key in photographer_keys:
-        photographer_photos, _changes_state = get_photographer_cache(connection, photographer_key)
-        total += count_photos(photographer_photos)
-    return total
+    if not photographer_keys:
+        return 0
+    placeholders = ",".join("?" for _key in photographer_keys)
+    row = connection.execute(
+        f"SELECT COALESCE(SUM(photo_count), 0) FROM photographer_cache WHERE photographer_key IN ({placeholders})",
+        photographer_keys,
+    ).fetchone()
+    return int(row[0] or 0)
 
 
 def log_file_changes(old_tree: dict[str, Any], new_tree: dict[str, Any]) -> None:
@@ -1103,6 +1719,7 @@ def update_photographer_cache(
     connection: sqlite3.Connection,
     photographer_key: str,
     photographer: list[Any],
+    changes_cache: dict[str, tuple[list[dict[str, Any]], str]],
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     if not isinstance(photographer, list) or len(photographer) < 2:
         log(f"Hoppar över {photographer_key}: fotografposten saknar Drive-url.")
@@ -1118,15 +1735,67 @@ def update_photographer_cache(
         return {}, {}, False
 
     log_step(photographer_key)
-    old_photographer_photos, changes_state = get_photographer_cache(connection, photographer_key)
+    old_photographer_photos, changes_state, old_drive_entries = get_photographer_cache(connection, photographer_key)
+    has_drive_entries = has_saved_drive_entries(connection, photographer_key)
 
     if OAUTH_TOKEN and old_photographer_photos and changes_state:
-        changed = photographer_has_drive_changes(changes_state)
+        handled_incrementally, incremental_photos, incremental_changes_state, incremental_drive_entries, changed, change_log = (
+            apply_drive_changes_incremental(
+                photographer_key,
+                old_photographer_photos,
+                changes_state,
+                old_drive_entries,
+                changes_cache,
+            )
+        )
+        if handled_incrementally and not changed and contains_okand(old_photographer_photos):
+            handled_incrementally = False
+            changed = True
+            log_detail(f"Omgenererar {photographer_key} eftersom cachen innehåller okand.")
+        if handled_incrementally:
+            if changed:
+                log_detail(f"Uppdaterade databascache för {photographer_key} via Drive Changes.")
+                if change_log:
+                    for line in change_log:
+                        log_detail(line)
+                else:
+                    log_file_changes(old_photographer_photos, incremental_photos)
+                save_photographer_cache(
+                    connection,
+                    photographer_key,
+                    incremental_photos,
+                    incremental_changes_state,
+                    incremental_drive_entries,
+                )
+            elif has_drive_entries:
+                update_photographer_change_cache(
+                    connection,
+                    photographer_key,
+                    incremental_changes_state,
+                )
+            else:
+                update_photographer_change_cache(
+                    connection,
+                    photographer_key,
+                    incremental_changes_state,
+                    incremental_drive_entries,
+                )
+            return old_photographer_photos, incremental_photos, changed
+
+        changed = photographer_has_drive_changes(changes_state, changes_cache)
         if folder_id is not None and not changed and contains_okand(old_photographer_photos):
             changed = True
             log_detail(f"Omgenererar {photographer_key} eftersom cachen innehåller okand.")
         if not changed:
-            save_photographer_cache(connection, photographer_key, old_photographer_photos, changes_state)
+            if has_drive_entries:
+                update_photographer_change_cache(connection, photographer_key, changes_state)
+            else:
+                update_photographer_change_cache(
+                    connection,
+                    photographer_key,
+                    changes_state,
+                    old_drive_entries,
+                )
             return old_photographer_photos, old_photographer_photos, False
 
     photographer_photos: dict[str, Any] = {}
@@ -1164,7 +1833,7 @@ def update_photographer_cache(
             log_detail(f"Kunde inte uppdatera Drive change-state för {photographer_key}: {error}")
 
     cache_changed = photographer_photos != old_photographer_photos
-    save_photographer_cache(connection, photographer_key, photographer_photos, changes_state)
+    save_photographer_cache(connection, photographer_key, photographer_photos, changes_state, drive_entries)
     return old_photographer_photos, photographer_photos, cache_changed
 
 
@@ -1189,16 +1858,23 @@ def run_update() -> None:
     photographers = read_json(PHOTOGRAPHERS_FILE, {})
     photographer_keys = list(photographers.keys())
     photographer_key_set = set(photographer_keys)
+    changes_cache: dict[str, tuple[list[dict[str, Any]], str]] = {}
 
     with open_database() as database:
         migrate_legacy_photographer_files(database, photographer_key_set)
+        backfill_photo_counts(database)
 
-        photos = read_json(PHOTOS_FILE, {})
-        photos_changed = not bool(photos)
-        if not photos:
+        photos: dict[str, Any] | None = None
+        photos_changed = False
+        if not PHOTOS_FILE.exists():
             photos = build_photos_from_database(database, photographer_keys)
+            photos_changed = True
 
         for removed_tree in delete_removed_photographer_caches(database, photographer_key_set):
+            if photos is None:
+                photos = read_json(PHOTOS_FILE, {})
+                if not photos:
+                    photos = build_photos_from_database(database, photographer_keys)
             remove_tree(photos, removed_tree)
             photos_changed = True
 
@@ -1207,8 +1883,13 @@ def run_update() -> None:
                 database,
                 photographer_key,
                 photographer,
+                changes_cache,
             )
             if cache_changed:
+                if photos is None:
+                    photos = read_json(PHOTOS_FILE, {})
+                    if not photos:
+                        photos = build_photos_from_database(database, photographer_keys)
                 remove_tree(photos, old_photographer_photos)
                 merge_tree(photos, photographer_photos)
                 photos_changed = True
@@ -1216,6 +1897,7 @@ def run_update() -> None:
         total = count_database_photos(database, photographer_keys)
 
     if photos_changed:
+        assert photos is not None
         write_json(PHOTOS_FILE, photos)
         log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
     else:
