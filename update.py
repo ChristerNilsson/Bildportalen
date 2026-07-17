@@ -86,7 +86,7 @@ def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def commit_and_push_updates() -> None:
-    run_git("add", LOG_FILE_NAME)
+    # run_git("add", LOG_FILE_NAME)
     run_git("add", str(PHOTOS_FILE.relative_to(REPO_ROOT)))
 
     diff = run_git("diff", "--cached", "--quiet", check=False)

@@ -5,4 +5,5 @@ bildportalen.sqlite
 bildportalen.sqlite-*
 update.log
 *.zip
+*.log
 bilder.json
