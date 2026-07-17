@@ -2414,3 +2414,32 @@
 12:55:17 Skapade photos.json med 66450 bilder.
 12:55:17  Drive JSON: 1 anrop, 3603 bytes (changes=1 anrop/3603 bytes).
 2026-07-17 Uppdatering klar. 1.371 sekunder
+
+2026-07-17 Startar uppdatering.
+13:31:59 Laddar OAuth-token.
+13:31:59 OAuth används för Drive API och ändringskontroll.
+13:31:59 Läser photographers.json.
+13:31:59 JCN
+13:32:00 VT
+13:32:00  Uppdaterade databascache för VT via Drive Changes.
+13:32:00 LOAH_26
+13:32:00 LOAH_25
+13:32:00 LOAH_24
+13:32:00 LOAH_23
+13:32:00 LOAH_22
+13:32:00 LOAH_21
+13:32:00 LOAH_20
+13:32:00 LOAH_19
+13:32:00 LOAH_18
+13:32:00 LOAH_17
+13:32:00 LOAH_16
+13:32:00 LOAH_15
+13:32:00 LOAH_14
+13:32:00 LOAH_13
+13:32:00 LOAH_12
+13:32:00 LOAH_11
+13:32:00 HELP
+13:32:00 LOAH_0K
+13:32:00 Skapade photos.json med 66450 bilder.
+13:32:00  Drive JSON: 1 anrop, 621 bytes (changes=1 anrop/621 bytes).
+2026-07-17 Uppdatering klar. 1.498 sekunder
