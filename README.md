@@ -2,12 +2,22 @@
 
 [Try it!](https://christernilsson.github.io/Bildportalen/)
 
+### Uppsnabbning av update.py
+
+Databas infördes, LOAH_26.json osv togs bort.  
+photos.json uppdateras kirurgiskt mha databasen.  
+Byte av filnamn eller katalognamn går nu på en sekund.  
+Byte av båda samtidigt innebär långsam uppdatering, dvs cirka 30 sekunder.  
+Även nollkörning tar cirka en sekund.  
+I princip skulle man kunna köra update.py en gång per minut.  
+Jag ligger dock kvar på en gång per timma.  
+
 ## HIGH 
 
 ### PYTHON Automatisk exekvering av update.py
 
 Denna sker med hjälp av Win11 Task Scheduler.  
-Den är inställd på uppdatering varje timme 00:17, 01:17 osv.  
+Den är inställd på uppdatering varje timme 00:32, 01:32 osv.  
 Resultatet loggas i yyyy.log. T ex 2026.log.  
 
 Github Actions testades först, men den visade sig inte vara tillförlitlig.
