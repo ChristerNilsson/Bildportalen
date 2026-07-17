@@ -65,6 +65,7 @@ USER_AGENT = "Mozilla/5.0 BildbankenForAll/1.0"
 GOOGLE_DRIVE_API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
 OAUTH_TOKEN = ""
 DRIVE_JSON_STATS: dict[str, dict[str, int]] = {}
+LOG_BUFFER: list[str] | None = None
 
 
 def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
@@ -75,9 +76,40 @@ def log(message: str, format = "%H:%M:%S") -> None:  # %Y-%m-%d eller %H:%M:%S
     else:
         timestamp = now.strftime(format)
     line = f"{timestamp} {message}"
+    if LOG_BUFFER is not None:
+        LOG_BUFFER.append(line)
+        return
+
+    write_log_line(line)
+
+
+def write_log_line(line: str) -> None:
     print(line)
     with LOG_FILE.open("a", encoding="utf-8") as file:
         file.write(line + "\n")
+
+
+def begin_log_buffer() -> None:
+    global LOG_BUFFER
+    LOG_BUFFER = []
+
+
+def flush_log_buffer(end_section: bool = False) -> None:
+    global LOG_BUFFER
+    if LOG_BUFFER is None:
+        return
+    lines = LOG_BUFFER
+    LOG_BUFFER = None
+    start_log_section()
+    for line in lines:
+        write_log_line(line)
+    if end_section:
+        end_log_section()
+
+
+def discard_log_buffer() -> None:
+    global LOG_BUFFER
+    LOG_BUFFER = None
 
 
 def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -238,6 +270,12 @@ def log_traceback(error: BaseException) -> None:
 
 
 def start_log_section() -> None:
+    print()
+    with LOG_FILE.open("a", encoding="utf-8") as file:
+        file.write("\n")
+
+
+def end_log_section() -> None:
     print()
     with LOG_FILE.open("a", encoding="utf-8") as file:
         file.write("\n")
@@ -1976,9 +2014,11 @@ def run_update() -> None:
     global OAUTH_TOKEN
     started = time.perf_counter()
     reset_drive_json_stats()
+    begin_log_buffer()
 
     log("Startar uppdatering.","%Y-%m-%d")
     if not acquire_update_lock():
+        flush_log_buffer()
         return
 
     log_step("Laddar OAuth-token.")
@@ -2037,14 +2077,16 @@ def run_update() -> None:
         assert photos is not None
         write_json(PHOTOS_FILE, photos)
         log_step(f"Skapade {PHOTOS_FILE.name} med {total} bilder.")
+        log_drive_json_stats()
+
+        commit_and_push_updates()
+        duration = time.perf_counter() - started
+        log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
+        flush_log_buffer(end_section=True)
     else:
-        log_step(f"Inget nytt för {PHOTOS_FILE.name}. Databasen innehåller {total} bilder.")
-
-    log_drive_json_stats()
-
-    commit_and_push_updates()
-    duration = time.perf_counter() - started
-    log(f"Uppdatering klar. {duration:.3f} sekunder", "%Y-%m-%d")
+        duration = time.perf_counter() - started
+        discard_log_buffer()
+        log(f"Inget nytt. {total} bilder. {duration:.3f} sekunder.", "%Y-%m-%d %H:%M:%S")
 
     # started = time.perf_counter()
     # duration = time.perf_counter() - started
@@ -2054,15 +2096,16 @@ def run_update() -> None:
 
 
 def main() -> int:
-    start_log_section()
     try:
         run_update()
         return 0
     except KeyboardInterrupt as error:
+        flush_log_buffer()
         log(f"UPPDATERING AVBRUTEN: {type(error).__name__}")
         log_traceback(error)
         return 130
     except BaseException as error:
+        flush_log_buffer()
         log(f"UPPDATERING MISSLYCKADES: {type(error).__name__}: {error}")
         log_traceback(error)
         return 1
