@@ -2086,7 +2086,7 @@ def run_update() -> None:
     else:
         duration = time.perf_counter() - started
         discard_log_buffer()
-        log(f"Inget nytt. {total} bilder. {duration:.3f} sekunder.", "%Y-%m-%d %H:%M:%S")
+        log(f"{duration:.3f} sec", "%Y-%m-%d %H:%M:%S")
 
     # started = time.perf_counter()
     # duration = time.perf_counter() - started
