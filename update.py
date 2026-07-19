@@ -2088,10 +2088,6 @@ def run_update() -> None:
         discard_log_buffer()
         log(f"{duration:.3f} sec", "%Y-%m-%d %H:%M:%S")
 
-    # started = time.perf_counter()
-    # duration = time.perf_counter() - started
-    # log(f"commit and push. {duration:.3f} sekunder", "%Y-%m-%d")
-    
     return
 
 

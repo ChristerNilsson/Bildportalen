@@ -5,3 +5,5 @@ bildportalen.sqlite
 bildportalen.sqlite-*
 *.zip
 *.log
+*.iml
+*.xml
