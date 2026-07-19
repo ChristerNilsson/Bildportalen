@@ -32,12 +32,12 @@ python update.py
 
 `update.py` läser `photographers.json`, hämtar katalog- och filinformation från fotografernas Google Drives och skriver:
 
+- `bildportalen.sqlite`
 - `photos.json`
-- `photographers/<fotografnyckel>.json`
-- `update.log`
+- `2026.log`
 
-Varje fotograf får en egen json-fil i `photographers/`. Filen återskapas bara när Drive-ändringar hittas, om OAuth och ändringskontroll är aktiverat.
+Varje fotografs katalogstruktur lagras i databasen. photos.json uppdateras kirurgiskt enbart när Drive-ändringar hittas.
 
 ## Publicering
 
-Efter uppdatering kontrolleras ändringarna lokalt och commitas till GitHub. GitHub Pages använder filerna i detta repo, inklusive `index.html`, `photos.json` och `photographers.json`.
+Efter uppdatering kontrolleras ändringarna lokalt och committas till GitHub. GitHub Pages använder filerna i detta repo, inklusive `index.html`, `photos.json` och `photographers.json`.
