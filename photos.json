@@ -4145,7 +4145,6 @@
       "Tasaselo.txt": "1Be2yOUT445NqwH4kZf9rxOSZjPBmQ4Zk"
     }
   },
-  "Help.pdf": "1DwM1s1N3ZCPWKoNFFyWaGsXg1OZAlHBh",
   "Klubbar": {
     "4 Springare": {
       "Porträtt, SS 4 Springare": {
@@ -337797,5 +337796,8 @@
         ]
       }
     }
+  },
+  "okand": {
+    "Help.pdf": "1DwM1s1N3ZCPWKoNFFyWaGsXg1OZAlHBh"
   }
 }
